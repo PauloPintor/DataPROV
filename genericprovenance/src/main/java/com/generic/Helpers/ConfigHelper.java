@@ -3,6 +3,13 @@ package com.generic.Helpers;
 import java.io.InputStream;
 import java.util.Properties;
 
+/** 
+ * This class is responsible to manage the configuration file
+ * 
+ * @author Paulo Pintor
+ * @version 1.0
+ * @since 1.0
+*/
 public class ConfigHelper {
 	/**
 	 * configPath contains the name of the configuration file
@@ -20,7 +27,7 @@ public class ConfigHelper {
 	 * private string configPath in this file.
 	 * 
 	 * @param propertyName
-	 * @return the value of the property with the param name
+	 * @return String the value of the property with the param name
 	 * @throws Exception
 	 */
 	public String getPropertieValue(String propertyName) throws Exception {

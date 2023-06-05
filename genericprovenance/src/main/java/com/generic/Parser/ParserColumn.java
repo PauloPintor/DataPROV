@@ -1,5 +1,12 @@
 package com.generic.Parser;
 
+/** 
+ * Represents a column in the SQL query to support the parser
+ * 
+ * @author Paulo Pintor
+ * @version 1.0
+ * @since 1.0
+*/
 public class ParserColumn {
 	private String name;
     private String alias;
@@ -22,7 +29,7 @@ public class ParserColumn {
     /** 
      * Get the name of the column
      * 
-     * @return String
+     * @return String the column's name
      */
     public String getName() {
         return this.name;
@@ -40,7 +47,7 @@ public class ParserColumn {
     /**
      * Get the alias of the column
      * 
-     * @return String
+     * @return String the column's alias
      */
     public String getAlias() {
         return this.alias;
@@ -58,7 +65,7 @@ public class ParserColumn {
     /**
      * Get the asName of the column
      * 
-     * @return String
+     * @return String the column's asName
      */
     public String getAsName() {
         return this.asName;
@@ -85,7 +92,7 @@ public class ParserColumn {
     /**
      * Set the order of the column
      * 
-     * @param order
+     * @param order the column's order in the projection
      */
     public void setOrder(int order) {
         this.order = order;

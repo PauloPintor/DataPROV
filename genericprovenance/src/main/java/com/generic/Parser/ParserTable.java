@@ -7,6 +7,13 @@ import java.util.Objects;
 import net.sf.jsqlparser.statement.select.SelectExpressionItem;
 import net.sf.jsqlparser.statement.select.SelectItem;
 
+/** 
+ * Represents a table in the SQL query to support the parser
+ * 
+ * @author Paulo Pintor
+ * @version 1.0
+ * @since 1.0
+*/
 public class ParserTable {
  	private String name;
     private String database;

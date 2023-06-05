@@ -11,6 +11,13 @@ import java.util.Properties;
 import javax.sql.rowset.CachedRowSet;
 import javax.sql.rowset.RowSetProvider;
 
+/** 
+ * This class is responsible to connect with Trino and execute queries
+ * 
+ * @author Paulo Pintor
+ * @version 1.0
+ * @since 1.0
+*/
 public class TrinoHelper {
 
 	/**
