@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.statement.select.SelectExpressionItem;
 import net.sf.jsqlparser.statement.select.SelectItem;
 
@@ -171,20 +172,24 @@ public class ParserTable {
     }
 
 	//TODO ver se ainda é necessário
-    public void addColumns(List<SelectItem> selectedItems){
+    public void addColumns(List<SelectItem> selectedItems) throws AmbigousParserColumn{
         int index = 0;
         for (SelectItem selectItem : selectedItems) {
             if (selectItem instanceof SelectExpressionItem) {
                 SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItem;
-                net.sf.jsqlparser.schema.Column column = (net.sf.jsqlparser.schema.Column) selectExpressionItem.getExpression();
+                Column column = (Column) selectExpressionItem.getExpression();
                 String columnName = column.getColumnName();
                 String columnAlias = selectExpressionItem.getAlias() != null ? selectExpressionItem.getAlias().getName() : null;
 
+                //[ ] necessáriio perceber se existe solução para ir buscar as tableas sem necessidade de as ter no select
                 if(column.getTable() != null)
                 {
                     if(alias != null && alias.compareTo(column.getTable().getName()) == 0 || 
                         name.compareTo(column.getTable().getName()) == 0)
                         this.addColumn(new ParserColumn(columnName, columnAlias, index));
+                }else
+                {
+                    throw new AmbigousParserColumn();
                 }
                 index++;
             }            
