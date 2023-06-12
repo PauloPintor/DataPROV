@@ -90,11 +90,13 @@ public class Parser {
             SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
             PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
             
+            subSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
+
             //TODO: falta verificar para UNIONS, DISTINCTS, etc
             if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
                 tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
 			}else{
-                this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+                this.SelectWhereColumns(tempPlainSelect);
                 tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
             }
             //[ ] confirmar: todos os subselects têm alias?
@@ -116,11 +118,13 @@ public class Parser {
                 SubSelect tempSubSelect = (SubSelect) join.getRightItem();
                 PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
             
+                subSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
+
                 //TODO: falta verificar para UNIONS, DISTINCTS, etc
                 if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
                     tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
                 }else{
-                    this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+                    this.SelectWhereColumns(tempPlainSelect);
                     tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
                 }
                 
@@ -185,7 +189,7 @@ public class Parser {
         }
         
         String listAgg = getListAgg(tableTemp+".prov", '+', _column);
-        selectItems.add(new SelectExpressionItem(new Column(listAgg)));
+        selectItems.add(new SelectExpressionItem(new Column("'(' || "+listAgg+" || ')' as prov")));
         newPlainSelect.addSelectItems(selectItems);
 
         GroupByElement newGroupByElement = new GroupByElement();
@@ -239,7 +243,7 @@ public class Parser {
      * @param alias the alias of from a subselect
      * @throws AmbigousParserColumn
      */
-    private void SelectWhereColumns(PlainSelect plainSelect, String alias) throws AmbigousParserColumn{
+    private void SelectWhereColumns(PlainSelect plainSelect) throws AmbigousParserColumn{
         Table tableTemp = (Table) plainSelect.getFromItem();
 
         ParserTable table = new ParserTable(tableTemp.getName(), tableTemp.getAlias() != null ? tableTemp.getAlias().getName() : null);
@@ -249,11 +253,40 @@ public class Parser {
 
         table.addColumns(plainSelect.getSelectItems());
 
-        alias = alias != null || !alias.isEmpty() ? alias : (tableTemp.getAlias() != null ? tableTemp.getAlias().getName() : "");
-
-        WhereColumns(table, alias);
-
+        WhereColumns(table, "");
     }
+
+
+    private void subSelectWhereProvenance(PlainSelect plainSelect, String alias){
+        List<ParserColumn> tempColumns = projectionColumns.stream().filter(column -> column.getTable().getName().compareTo(alias) == 0).collect(Collectors.toList());
+
+        if(tempColumns.size() > 0){
+            for(ParserColumn c : tempColumns){
+                for(SelectItem selectItem : plainSelect.getSelectItems()){
+                    if (selectItem instanceof SelectExpressionItem) {
+				        SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItem;
+                        Column column = (Column) selectExpressionItem.getExpression();
+                        String columnName = column.getColumnName();
+                        String columnAlias = selectExpressionItem.getAlias() != null ? selectExpressionItem.getAlias().getName() : null;
+
+                        if(c.getName().equals(columnName) || c.getName().equals(columnAlias)){
+                            ParserTable tableTemp = new ParserTable(column.getTable().getName(), column.getTable().getAlias() != null ? column.getTable().getAlias().getName() : null);
+
+                            if(column.getTable().getSchemaName() != null) 
+                                tableTemp.setSchema(column.getTable().getSchemaName());
+                            if(column.getTable().getDatabase() != null)
+                                tableTemp.setDatabase(column.getTable().getDatabase().getDatabaseName());
+                            
+                            c.setName(columnName);
+                            c.setAlias(columnAlias);
+                            c.setTable(tableTemp);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     
     /**
      * The function receives a ParserTable and a String alias, and compares the columns of the table with the projectionColumns list and sets the actual name of the columns and table to use in the where provenance.
@@ -281,7 +314,7 @@ public class Parser {
         }else{
             for(ParserColumn c : projectionColumns){
                 for(ParserColumn uc : table.getColumns()){
-                    if(c.getName().compareTo(uc.getAlias()) == 0 || c.getName().compareTo(uc.getName()) == 0)
+                    if(c.getName().equals(uc.getAlias()) || c.getName().equals(uc.getName()))
                     {
                         c.setAlias(uc.getAlias());
                         c.setName(uc.getName());
@@ -337,6 +370,6 @@ public class Parser {
      * @return a String with the SQL Standard function 'ListAGG'
      */
     private String getListAgg(String expression, char separator, String orderByColumn){
-        return String.format("listagg(%s, '%c') WITHIN GROUP (ORDER BY %s) AS prov", expression, separator, orderByColumn);
+        return String.format("listagg(%s, '%c') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
     }
 }
