@@ -1,5 +1,7 @@
 package com.generic.Parser;
 
+import java.util.Objects;
+
 /** 
  * Represents a column in the SQL query to support the parser
  * 
@@ -114,5 +116,16 @@ public class ParserColumn {
      */
     public void setTable(ParserTable table) {
         this.table = table;
+    }
+
+	@Override
+    public boolean equals(Object o) {
+        if (o == this)
+            return true;
+        if (!(o instanceof ParserColumn)) {
+            return false;
+        }
+        ParserColumn column = (ParserColumn) o;
+        return Objects.equals(name, column.name) && Objects.equals(alias, column.alias) && order == column.order && Objects.equals(table, column.table);
     }
 }

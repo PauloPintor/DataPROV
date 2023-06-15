@@ -1,6 +1,8 @@
 package com.generic.Parser;
 
 import java.util.ArrayList;
+import java.util.Dictionary;
+import java.util.Hashtable;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -12,7 +14,6 @@ import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
-import net.sf.jsqlparser.statement.select.FromItem;
 import net.sf.jsqlparser.statement.select.GroupByElement;
 import net.sf.jsqlparser.statement.select.Join;
 import net.sf.jsqlparser.statement.select.PlainSelect;
@@ -22,7 +23,6 @@ import net.sf.jsqlparser.statement.select.SelectExpressionItem;
 import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SetOperation;
 import net.sf.jsqlparser.statement.select.SetOperationList;
-import net.sf.jsqlparser.statement.select.SetOperationList.SetOperationType;
 import net.sf.jsqlparser.statement.select.SubSelect;
 import net.sf.jsqlparser.statement.select.UnionOp;
 
@@ -35,7 +35,7 @@ import net.sf.jsqlparser.statement.select.UnionOp;
 */
 public class Parser {
 
-	private List<ParserColumn> projectionColumns;
+	private List<List<ParserColumn>> projectionColumns;
 
 	/**
 	 * The class constructor
@@ -51,8 +51,8 @@ public class Parser {
 		
         if (statement instanceof Select) {
 			Select selectStatement = (Select) statement;
-			projectionColumns = new ArrayList<ParserColumn>();
-            
+			projectionColumns = new ArrayList<List<ParserColumn>>();
+
 			//[ ] It is not enough to be a SetOpeartionList, since Intersects are also a set of operations
 			if(selectStatement.getSelectBody() instanceof SetOperationList)
             {
@@ -77,7 +77,7 @@ public class Parser {
 				}
             }else {                
                 PlainSelect plainSelect = (PlainSelect) selectStatement.getSelectBody();
-				addProjectionColumns(plainSelect);
+				projectionColumns = getProjectionColumns(plainSelect);
                 if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()){
                     plainSelect = JoinProvenance(plainSelect);
                     selectStatement.setSelectBody(plainSelect);
@@ -115,7 +115,7 @@ public class Parser {
             if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
                 tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
 			}else{
-                this.SelectWhereColumns(tempPlainSelect);
+                this.SelectWhereColumns(tempPlainSelect, "");
                 tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
             }
             //[ ] confirmar: todos os subselects têm alias?
@@ -143,7 +143,7 @@ public class Parser {
                 if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
                     tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
                 }else{
-                    this.SelectWhereColumns(tempPlainSelect);
+                    this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
                     tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
                 }
                 
@@ -187,15 +187,16 @@ public class Parser {
 							groupByExpressions.add(newColumn);
 						}
 					}            
-				}
-
-				plainSelect = SelectProvenance(plainSelect);
+				}			
 				
 				if(index == 0){
 					Column firstColumn = (Column) ((SelectExpressionItem) plainSelect.getSelectItems().get(0)).getExpression();
 					String listAgg = getListAgg("prov", '+', "_un."+firstColumn.getColumnName());
 					selectItems.add(new SelectExpressionItem(new Column(listAgg)));
 				}
+
+				plainSelect = SelectProvenance(plainSelect);
+				
 				index++;
 			}
 
@@ -234,12 +235,20 @@ public class Parser {
      */
     private PlainSelect SelectProvenance(PlainSelect plainSelect) throws AmbigousParserColumn, JSQLParserException{
 		if(plainSelect.getFromItem() instanceof Table){
-			SelectExpressionItem newColumn = new SelectExpressionItem();
 			Table tempTable = (Table) plainSelect.getFromItem();
-			Column prov = new Column("prov");
-			prov.setTable(tempTable);
-			newColumn.setExpression(prov);
-			plainSelect.addSelectItems(newColumn);
+			if(plainSelect.getDistinct() != null){
+				plainSelect = DistinctProvenance(plainSelect, tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName());
+			}else if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty())
+			{
+                plainSelect = JoinProvenance(plainSelect);
+			}else{
+				SelectExpressionItem newColumn = new SelectExpressionItem();
+				
+				Column prov = new Column("prov");
+				prov.setTable(tempTable);
+				newColumn.setExpression(prov);
+				plainSelect.addSelectItems(newColumn);
+			}
 		}else if(plainSelect.getFromItem() instanceof SubSelect){
 			SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
 
@@ -272,6 +281,9 @@ public class Parser {
 				if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty())
 				{
                     tempPlainSelect = JoinProvenance(tempPlainSelect);
+				}else{
+					SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+					tempPlainSelect = SelectProvenance(tempPlainSelect);
 				}
 			}			
 
@@ -284,7 +296,31 @@ public class Parser {
         return plainSelect;
     }
 	
-    /**
+    private PlainSelect DistinctProvenance(PlainSelect plainSelect, String alias) {
+		List<Expression> groupByExpressions = new ArrayList<>();
+
+		plainSelect.setDistinct(null);
+
+		for (SelectItem selectItem : plainSelect.getSelectItems()) {
+			if (selectItem instanceof SelectExpressionItem) {
+				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItem;
+				Column column = (Column) selectExpressionItem.getExpression();
+				
+				groupByExpressions.add(column);
+			}            
+		}
+		Column firstColumn = (Column) ((SelectExpressionItem) plainSelect.getSelectItems().get(0)).getExpression();
+		String listAgg = getListAgg("prov", '+', alias + "." + firstColumn.getColumnName());
+
+		plainSelect.addSelectItems(new SelectExpressionItem(new Column("'(' || "+listAgg+" || ')' as prov")));
+
+		for(Expression ex : groupByExpressions)
+            plainSelect.addGroupByColumnReference(ex);
+
+		return plainSelect;
+	}
+
+	/**
      * The function is responsible to deal with Group Bys. It receives as parameter a PlainSelect and creates a new select with the Group By columns and the prov column, surronding the select on the PlainSelect.
      * 
      * @param plainSelect the select statement
@@ -368,19 +404,28 @@ public class Parser {
      * @param alias the alias of from a subselect
      * @throws AmbigousParserColumn
      */
-    private void SelectWhereColumns(PlainSelect plainSelect) throws AmbigousParserColumn{
-        Table tableTemp = (Table) plainSelect.getFromItem();
+    private void SelectWhereColumns(PlainSelect plainSelect, String alias) throws AmbigousParserColumn{
+		List<List<ParserColumn>> tempList = new ArrayList<>();
+		tempList = getProjectionColumns(plainSelect);
 
-        ParserTable table = new ParserTable(tableTemp.getName(), tableTemp.getAlias() != null ? tableTemp.getAlias().getName() : null);
+		for(List<ParserColumn> list : tempList){
+			for(ParserColumn col : list){
+				for(List<ParserColumn> projCol : projectionColumns){
+					List<ParserColumn> filterTable = projCol.stream().filter(column -> column.getTable().getName().equals(alias)).collect(Collectors.toList());
 
-        if(tableTemp.getSchemaName() != null) table.setSchema(tableTemp.getSchemaName());
-        if(tableTemp.getDatabase() != null) table.setDatabase(tableTemp.getDatabase().getDatabaseName());        
-
-        table.addColumns(plainSelect.getSelectItems());
-
-        WhereColumns(table, "");
+					if(filterTable.size() > 0){
+						for(ParserColumn column : filterTable){
+							if(column.getName().equals(col.getAlias())){
+								projCol.set(projCol.indexOf(column), col);
+							}else if(column.getName().equals(col.getName())){
+								projCol.get(projCol.indexOf(column)).setTable(col.getTable());
+							}
+						}
+					}
+				}
+			}
+		}
     }
-
 
 	/**
 	 * The function receives a Plainselect and a String that represents the alias of the subselect. It compares the columns from the PlainSelect with the projection columns and set the columns and tables' names for the where-provenance. 
@@ -389,7 +434,7 @@ public class Parser {
 	 * @param alias the subselect alias
 	 */
     private void SubSelectWhereProvenance(PlainSelect plainSelect, String alias){
-        List<ParserColumn> tempColumns = projectionColumns.stream().filter(column -> column.getTable().getName().compareTo(alias) == 0).collect(Collectors.toList());
+        List<ParserColumn> tempColumns = null;//projectionColumns.stream().filter(column -> column.getTable().getName().compareTo(alias) == 0).collect(Collectors.toList());
 
         if(tempColumns.size() > 0){
             for(ParserColumn c : tempColumns){
@@ -419,9 +464,9 @@ public class Parser {
     }
 
 	private void UnionWhereProvenance(List<ParserColumn> unionColumns, String alias){
-        if(!alias.isEmpty())
+       /* if(!alias.isEmpty())
         {
-            List<ParserColumn> tempColumns = projectionColumns.stream().filter(column -> column.getTable().getName().compareTo(alias) == 0).collect(Collectors.toList());
+            List<ParserColumn> tempColumns = null; //projectionColumns.stream().filter(column -> column.getTable().getName().compareTo(alias) == 0).collect(Collectors.toList());
 
             for(ParserColumn c : tempColumns){
                 for(ParserColumn uc : unionColumns){
@@ -431,7 +476,7 @@ public class Parser {
                             if(c.getOrder() == _uc.getOrder())
                             {
                                 _uc.setOrder(c.getOrder());
-                                projectionColumns.add(_uc);
+                                //projectionColumns.add(_uc);
                             }
                         }
                         break;
@@ -456,7 +501,7 @@ public class Parser {
                     }
                 }
             }
-        }
+        } */
 	}
 
 	/**
@@ -466,7 +511,7 @@ public class Parser {
 	 * @return the table with the columns
 	 * @throws AmbigousParserColumn an excpetion if the column is ambigous
 	 */
-	private ParserTable getTable(PlainSelect plainSelect) throws AmbigousParserColumn{
+	/*private ParserTable getTable(PlainSelect plainSelect) throws AmbigousParserColumn{
         Table fromTable = (Table) plainSelect.getFromItem();
 
         ParserTable table = new ParserTable(fromTable.getName(), fromTable.getAlias() != null ? fromTable.getAlias().getName() : null);
@@ -477,7 +522,7 @@ public class Parser {
         table.addColumns(plainSelect.getSelectItems());
 
         return table;
-    }
+    }*/
 
     
     /**
@@ -488,7 +533,7 @@ public class Parser {
      */
     private void WhereColumns(ParserTable table, String alias){
         //if Alias is different of "", filter the projectionColumns
-        if(!alias.isEmpty())
+       /*if(!alias.isEmpty())
         {
             List<ParserColumn> tempColumns = projectionColumns.stream().filter(column -> column.getTable().getName().compareTo(alias) == 0).collect(Collectors.toList());
 			
@@ -514,15 +559,19 @@ public class Parser {
                     }
                 }
             }
-        }
+        }*/
     }
 
     /**
-	 * The functions adds the main projection columns to the list of projection columns
+	 * The functions returns a list that contains list of columns by the order of the select statement
 	 * 
 	 * @param select the PlainSelect representing the select statement
+	 * @return a list that contains list of columns by the order of the select statement
+     * @throws AmbigousParserColumn
 	 */
-	private void addProjectionColumns(PlainSelect select) throws Exception{
+	private List<List<ParserColumn>> getProjectionColumns(PlainSelect select) throws AmbigousParserColumn{
+		List<List<ParserColumn>> result = new ArrayList<List<ParserColumn>>();
+	
 		int index = 0;
 		for (SelectItem selectItem : select.getSelectItems()) {
 			if (selectItem instanceof SelectExpressionItem) {
@@ -546,11 +595,15 @@ public class Parser {
 					tempColumn.setTable(tableTemp);
 				}
                 
-				projectionColumns.add(tempColumn);
+				List<ParserColumn> temp = new ArrayList<ParserColumn>();
+				temp.add(tempColumn);
+				result.add(temp);
                 
 				index++;
             }            
         }
+
+		return result;
     }
 
     /**

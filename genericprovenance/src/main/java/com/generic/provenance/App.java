@@ -18,8 +18,10 @@ public class App
 		
 		//"SELECT X.region FROM ("+b+") X INNER JOIN ("+ a +") Y ON X.region = Y.region";
         // "SELECT c.city FROM (SELECT mypersonnel.city, mypersonnel.region FROM mypersonnel UNION SELECT mypersonnel2.city, mypersonnel2.region FROM mypersonnel2 UNION SELECT mypersonnel.city, mypersonnel.region FROM mypersonnel) c";
+
+		//"SELECT d.public.country.country_id FROM d.public.country UNION SELECT c.country_id FROM (SELECT d.public.city.country_id FROM d.public.city inner join d.public.address ON d.public.city.city_id = d.public.address.city_id) c ";
 		
-		String sql = "SELECT d.public.country.country_id FROM d.public.country UNION SELECT c.country_id FROM (SELECT d.public.city.country_id FROM d.public.city inner join d.public.address ON d.public.city.city_id = d.public.address.city_id) c ";
+		String sql = "SELECT table1.column1, table2.column2 FROM table1 INNER JOIN table2 ON table1.id = table2.id UNION SELECT table3.column1, table4.column2 FROM table INNER JOIN table4 ON table3.id = table4.id;";
 		
 		
 		//"SELECT mypersonnel.city, mypersonnel.region FROM mypersonnel UNION ALL SELECT mypersonnel2.city, mypersonnel2.region FROM mypersonnel2";
