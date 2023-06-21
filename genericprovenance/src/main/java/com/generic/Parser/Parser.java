@@ -1,9 +1,9 @@
 package com.generic.Parser;
 
 import java.util.ArrayList;
-import java.util.Dictionary;
-import java.util.Hashtable;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import net.sf.jsqlparser.JSQLParserException;
@@ -36,6 +36,7 @@ import net.sf.jsqlparser.statement.select.UnionOp;
 public class Parser {
 
 	private List<List<ParserColumn>> projectionColumns;
+	private int unionCounter = 0;
 
 	/**
 	 * The class constructor
@@ -77,7 +78,7 @@ public class Parser {
 				}
             }else {                
                 PlainSelect plainSelect = (PlainSelect) selectStatement.getSelectBody();
-				projectionColumns = getProjectionColumns(plainSelect);
+				projectionColumns = initializeProjCols(getProjectionColumns(plainSelect));
                 if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()){
                     plainSelect = JoinProvenance(plainSelect);
                     selectStatement.setSelectBody(plainSelect);
@@ -97,26 +98,33 @@ public class Parser {
         return result;
 	}
 
+	//public PlainSelect JoinProvenance(PlainSelect plainSelect, String unionId) throws JSQLParserException, AmbigousParserColumn {
 	public PlainSelect JoinProvenance(PlainSelect plainSelect) throws JSQLParserException, AmbigousParserColumn {
         String provToken = "";
         
         if(plainSelect.getFromItem() instanceof Table)
         {
             Table tempTable = (Table) plainSelect.getFromItem();
-            this.JoinWhereColumns(plainSelect, true);
+            //this.JoinWhereColumns(plainSelect, true);
+			this.SelectWhereColumns(plainSelect, null);
             provToken = (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getName())+".prov";
         }else if(plainSelect.getFromItem() instanceof SubSelect){
             SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
             PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
             
-            SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
+            //SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
 
             //TODO: falta verificar para UNIONS, DISTINCTS, etc
             if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
+				//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
+                //tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect, unionId));
+				this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
                 tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
 			}else{
-                this.SelectWhereColumns(tempPlainSelect, "");
+				this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
                 tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
+                //this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
+                //tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect, unionId));
             }
             //[ ] confirmar: todos os subselects têm alias?
             provToken = tempSubSelect.getAlias().getName()+".prov";
@@ -127,7 +135,9 @@ public class Parser {
         for(Join join : joins) {
             
             if(join.getRightItem() instanceof Table){
-                this.JoinWhereColumns(plainSelect, false);
+				//PlainSelect rightJoin = (PlainSelect) join.getRightItem();
+				//this.SelectWhereColumns(rightJoin, "");
+                //this.JoinWhereColumns(plainSelect, false);
             
                 Table tempTable = (Table) join.getRightItem();
                 provToken = provToken + "|| ' x ' ||"+(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getName())+".prov";
@@ -137,10 +147,11 @@ public class Parser {
                 SubSelect tempSubSelect = (SubSelect) join.getRightItem();
                 PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
             
-                SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
+                //SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
 
                 //TODO: falta verificar para UNIONS, DISTINCTS, etc
                 if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
+					this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
                     tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
                 }else{
                     this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
@@ -165,8 +176,8 @@ public class Parser {
 	private PlainSelect UnionProvenance(SetOperationList setOperations) throws AmbigousParserColumn, JSQLParserException {
 		List<SelectItem> selectItems = new ArrayList<>();
 		List<Expression> groupByExpressions = new ArrayList<>();
-		//List<ParserColumn> unionColumns = new ArrayList<>();
-		
+
+		String unionID = "_un"+unionCounter;
 		int index = 0;
 
 		for(SelectBody select : setOperations.getSelects()){
@@ -174,33 +185,70 @@ public class Parser {
 				PlainSelect plainSelect = (PlainSelect) select;
 
 				//ParserTable table = this.getTable(plainSelect);
-
-				for (SelectItem selectItem : plainSelect.getSelectItems()) {
-					if (selectItem instanceof SelectExpressionItem) {
-						SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItem;
-						Column column = (Column) selectExpressionItem.getExpression();
-						
-						if(index == 0){
-							Column newColumn = new Column(column.getColumnName());
-							newColumn.setTable(new Table("_un"));
-							selectItems.add(new SelectExpressionItem(newColumn));
-							groupByExpressions.add(newColumn);
-						}
-					}            
-				}			
 				
 				if(index == 0){
+					for (SelectItem selectItem : plainSelect.getSelectItems()) {
+						if (selectItem instanceof SelectExpressionItem) {
+							SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItem;
+							Column column = (Column) selectExpressionItem.getExpression();
+							
+							if(index == 0){
+								Column newColumn = new Column(column.getColumnName());
+								newColumn.setTable(new Table(unionID));
+								selectItems.add(new SelectExpressionItem(newColumn));
+								groupByExpressions.add(newColumn);
+							}
+						}            
+					}			
+
 					Column firstColumn = (Column) ((SelectExpressionItem) plainSelect.getSelectItems().get(0)).getExpression();
-					String listAgg = getListAgg("prov", '+', "_un."+firstColumn.getColumnName());
+					String listAgg = getListAgg("prov", '+', unionID+"."+firstColumn.getColumnName());
 					selectItems.add(new SelectExpressionItem(new Column(listAgg)));
 				}
 
-				plainSelect = SelectProvenance(plainSelect);
-				
-				index++;
-			}
+				//UnionWhereColumns(plainSelect, index == 0 ? true : false,"", unionID);
+				UnionWhereColumns(plainSelect, index == 0 ? true : false,"");
 
+				//plainSelect = SelectProvenance(plainSelect, unionID);
+				plainSelect = SelectProvenance(plainSelect);
+			}else if(select instanceof SubSelect){
+				SubSelect tempSubSelect = (SubSelect) select;
+				if(tempSubSelect.getSelectBody() instanceof PlainSelect){
+					PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();	
+					
+					if(index == 0){
+						for (SelectItem selectItem : tempPlainSelect.getSelectItems()) {
+							if (selectItem instanceof SelectExpressionItem) {
+								SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItem;
+								Column column = (Column) selectExpressionItem.getExpression();
+								
+								if(index == 0){
+									Column newColumn = new Column(column.getColumnName());
+									newColumn.setTable(new Table(unionID));
+									selectItems.add(new SelectExpressionItem(newColumn));
+									groupByExpressions.add(newColumn);
+								}
+							}            
+						}
+									
+
+						Column firstColumn = (Column) ((SelectExpressionItem) tempPlainSelect.getSelectItems().get(0)).getExpression();
+						String listAgg = getListAgg("prov", '+', unionID+"."+firstColumn.getColumnName());
+						selectItems.add(new SelectExpressionItem(new Column(listAgg)));
+					}
+					
+					UnionWhereColumns(tempPlainSelect, index == 0 ? true : false, tempSubSelect.getAlias().getName());
+
+					if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty())
+					{
+						tempPlainSelect = JoinProvenance(tempPlainSelect);
+					}else{
+						tempPlainSelect = SelectProvenance(tempPlainSelect);
+					}
+				}	
+			}
 			
+			index++;
 		}
 		
 		PlainSelect plainSelect = new PlainSelect();
@@ -216,11 +264,12 @@ public class Parser {
 		}
         
 		subSelect.setSelectBody(setOperations);
-        subSelect.setAlias(new Alias("_un"));
+        subSelect.setAlias(new Alias(unionID));
         plainSelect.setFromItem(subSelect);
         for(Expression ex : groupByExpressions)
             plainSelect.addGroupByColumnReference(ex);
 
+		unionCounter++;
         return plainSelect;
 	}
 
@@ -233,7 +282,8 @@ public class Parser {
      * @throws JSQLParserException
      * @throws Exception
      */
-    private PlainSelect SelectProvenance(PlainSelect plainSelect) throws AmbigousParserColumn, JSQLParserException{
+    //private PlainSelect SelectProvenance(PlainSelect plainSelect, String unionId) throws AmbigousParserColumn, JSQLParserException{
+	private PlainSelect SelectProvenance(PlainSelect plainSelect) throws AmbigousParserColumn, JSQLParserException{
 		if(plainSelect.getFromItem() instanceof Table){
 			Table tempTable = (Table) plainSelect.getFromItem();
 			if(plainSelect.getDistinct() != null){
@@ -241,6 +291,7 @@ public class Parser {
 			}else if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty())
 			{
                 plainSelect = JoinProvenance(plainSelect);
+				//plainSelect = JoinProvenance(plainSelect, unionId);
 			}else{
 				SelectExpressionItem newColumn = new SelectExpressionItem();
 				
@@ -280,8 +331,13 @@ public class Parser {
 			
 				if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty())
 				{
-                    tempPlainSelect = JoinProvenance(tempPlainSelect);
+					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
+					//tempPlainSelect = JoinProvenance(tempPlainSelect, unionId);
+					SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+					tempPlainSelect = JoinProvenance(tempPlainSelect);
 				}else{
+					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
+					//tempPlainSelect = SelectProvenance(tempPlainSelect, unionId);
 					SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
 					tempPlainSelect = SelectProvenance(tempPlainSelect);
 				}
@@ -398,34 +454,219 @@ public class Parser {
     }
 
     /**
-     * The function receives a PlainSelect that contains a simple SELECT and stores the table(s) and its column(s). Calls the function WhereColumns to compare with the projection columns and set the columns and tables' names.
+     * The function receives a PlainSelect that contains a simple SELECT and stores the table(s) and its column(s). 
      * 
      * @param plainSelect the select statement
      * @param alias the alias of from a subselect
      * @throws AmbigousParserColumn
      */
-    private void SelectWhereColumns(PlainSelect plainSelect, String alias) throws AmbigousParserColumn{
-		List<List<ParserColumn>> tempList = new ArrayList<>();
+    //private void SelectWhereColumns(PlainSelect plainSelect, String alias, String unionId) throws AmbigousParserColumn
+	private void SelectWhereColumns(PlainSelect plainSelect, String alias) throws AmbigousParserColumn
+	{
+		List<ParserColumn> tempList = new ArrayList<>();
+		//tempList = getProjectionColumns(plainSelect, unionId);
 		tempList = getProjectionColumns(plainSelect);
 
-		for(List<ParserColumn> list : tempList){
-			for(ParserColumn col : list){
-				for(List<ParserColumn> projCol : projectionColumns){
-					List<ParserColumn> filterTable = projCol.stream().filter(column -> column.getTable().getName().equals(alias)).collect(Collectors.toList());
+		for(ParserColumn col : tempList){
+			for(List<ParserColumn> projCol : projectionColumns){
+				List<ParserColumn> filterTable = null;
 
-					if(filterTable.size() > 0){
-						for(ParserColumn column : filterTable){
-							if(column.getName().equals(col.getAlias())){
-								projCol.set(projCol.indexOf(column), col);
-							}else if(column.getName().equals(col.getName())){
-								projCol.get(projCol.indexOf(column)).setTable(col.getTable());
+				//if(unionId != null && !unionId.isEmpty())
+				//	filterTable = projCol.stream().filter(column -> column.getTable().getName().equals(alias) && column.getUnionId().equals(unionId)).collect(Collectors.toList());
+				//else
+				filterTable = projCol.stream().filter(column -> column.getTable().getName().equals(alias)).collect(Collectors.toList());
+
+				if(filterTable.size() > 0){
+					for(ParserColumn column : filterTable){
+						if(column.getName().equals(col.getAlias())){
+							//int index = column.getOrder();
+							//col.setOrder(index);
+							projCol.set(projCol.indexOf(column), col);
+						}else if(column.getName().equals(col.getName())){
+							projCol.get(projCol.indexOf(column)).setTable(col.getTable());
+						}
+					}
+				}
+			}
+		}
+
+		removeRepeatedColumns();
+    }
+
+	//private void UnionWhereColumns(PlainSelect union, boolean first, String alias, String unionId) throws AmbigousParserColumn{
+	private void UnionWhereColumns(PlainSelect union, boolean first, String alias) throws AmbigousParserColumn{
+		List<ParserColumn> unionColumns = getProjectionColumns(union);
+
+		if(projectionColumns.size() > 0)
+		{
+			if(alias.isEmpty() || alias == null){
+				if(first){
+					for(ParserColumn col : unionColumns){
+						for(List<ParserColumn> projCol : projectionColumns){
+							for(ParserColumn column : projCol){
+								if(column.getName().equals(col.getAlias())){
+									projCol.set(projCol.indexOf(column), col);
+								}else if(column.getName().equals(col.getName())){
+									projCol.get(projCol.indexOf(column)).setTable(col.getTable());
+								}
+							}
+						}
+					}
+				}else{
+					for(ParserColumn col : unionColumns){
+						for(List<ParserColumn> projCol : projectionColumns){
+							List<ParserColumn> filterTable = projCol.stream().filter(column -> column.getOrder() == col.getOrder()).collect(Collectors.toList());
+
+							if(filterTable.size() > 0){
+								projCol.add(col);
+							}
+						}
+					}
+
+				}
+			}else{
+				for(ParserColumn col : unionColumns){
+					for(List<ParserColumn> projCol : projectionColumns){
+						List<ParserColumn> filterTable = projCol.stream().filter(column -> column.getTable().getName().equals(alias)).collect(Collectors.toList());
+
+						if(filterTable.size() > 0){
+							for(ParserColumn column : filterTable){
+								if(column.getName().equals(col.getAlias())){
+									projCol.set(projCol.indexOf(column), col);
+								}else if(column.getName().equals(col.getName())){
+									projCol.get(projCol.indexOf(column)).setTable(col.getTable());
+								}
 							}
 						}
 					}
 				}
 			}
 		}
-    }
+		else
+		{
+			projectionColumns = initializeProjCols(unionColumns);
+		}
+
+		removeRepeatedColumns();
+	}
+
+	/*
+				if(first){
+				if(!alias.isEmpty()){
+					for(List<ParserColumn> list : unionColumns){
+						for(ParserColumn col : list){
+							for(List<ParserColumn> projCol : projectionColumns){
+						
+								List<ParserColumn> filterTable = projCol.stream().filter(column -> column.getTable().getName().equals(alias)).collect(Collectors.toList());
+
+								if(filterTable.size() > 0){
+									for(ParserColumn column : filterTable){
+										if(column.getName().equals(col.getAlias())){
+											projCol.set(projCol.indexOf(column), col);
+										}else if(column.getName().equals(col.getName())){
+											int index = projCol.indexOf(column);
+											projCol.get(index).setTable(col.getTable());
+											projCol.get(index).setUnionId(col.getUnionId());
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}else{
+				if(!alias.isEmpty()){
+					for(List<ParserColumn> list : unionColumns){
+						for(ParserColumn col : list){
+							for(List<ParserColumn> projCol : projectionColumns){
+								List<ParserColumn> filterTable = projCol.stream().filter(column -> column.getTable().getName().equals(alias) && column.getUnionId().equals(unionId)).collect(Collectors.toList());
+
+								if(filterTable.size() > 0){
+									for(ParserColumn column : filterTable){
+										if(column.getName().equals(col.getAlias())){
+											projCol.set(projCol.indexOf(column), col);
+										}else if(column.getName().equals(col.getName())){
+											int index = projCol.indexOf(column);
+											projCol.get(index).setTable(col.getTable());
+											projCol.get(index).setUnionId(col.getUnionId());
+										}
+										else{
+											projCol.add(col);
+										}
+									}
+								}
+							}
+						}
+					}					
+				}else{
+					for(List<ParserColumn> list : unionColumns){
+						for(ParserColumn col : list){
+							for(List<ParserColumn> projCol : projectionColumns){
+								for(ParserColumn column : projCol){
+									if(column.getName().equals(col.getAlias())){
+										projCol.set(projCol.indexOf(column), col);
+									}else if(column.getName().equals(col.getName())){
+										int index = projCol.indexOf(column);
+										projCol.get(index).setTable(col.getTable());
+										projCol.get(index).setUnionId(col.getUnionId());
+									}
+									else{
+										projCol.add(col);
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+	private void UnionWhereColumns(List<List<ParserColumn>> unionColumns, String alias) throws AmbigousParserColumn{
+
+		if(projectionColumns.size() > 0)
+		{
+			for(List<ParserColumn> list : unionColumns){
+				for(ParserColumn col : list){
+					for(List<ParserColumn> projCol : projectionColumns){
+						if(!alias.isEmpty())
+						{
+							List<ParserColumn> filterTable = projCol.stream().filter(column -> column.getTable().getName().equals(alias)).collect(Collectors.toList());
+
+							if(filterTable.size() > 0){
+								for(ParserColumn column : filterTable){
+									if(column.getName().equals(col.getAlias())){
+										projCol.set(projCol.indexOf(column), col);
+									}else if(column.getName().equals(col.getName())){
+										projCol.get(projCol.indexOf(column)).setTable(col.getTable());
+									}
+								}
+							}
+						}else{
+
+						}
+					}
+				}
+			}
+		}else{
+			projectionColumns.addAll(unionColumns);
+		}
+	}*/
+
+
+	private List<List<ParserColumn>> initializeProjCols(List<ParserColumn> unionColumns) {
+		List<List<ParserColumn>> result = new ArrayList<>();
+		for(ParserColumn col : unionColumns){
+			List<ParserColumn> temp = new ArrayList<>();
+			temp.add(col);
+			result.add(temp);
+		}
+		return result;
+	}
+
+	private void removeRepeatedColumns() {
+		for(int i = 0; i < projectionColumns.size(); i++){
+			Set<ParserColumn> uniqueSet = new HashSet<>(projectionColumns.get(i));
+			projectionColumns.set(i, new ArrayList<>(uniqueSet));
+		}
+	}
 
 	/**
 	 * The function receives a Plainselect and a String that represents the alias of the subselect. It compares the columns from the PlainSelect with the projection columns and set the columns and tables' names for the where-provenance. 
@@ -566,13 +807,16 @@ public class Parser {
 	 * The functions returns a list that contains list of columns by the order of the select statement
 	 * 
 	 * @param select the PlainSelect representing the select statement
+	 * @param unionId if the select is a Union, it will need an Id to identify wich columns are part of wich Union
+	 * 
 	 * @return a list that contains list of columns by the order of the select statement
      * @throws AmbigousParserColumn
 	 */
-	private List<List<ParserColumn>> getProjectionColumns(PlainSelect select) throws AmbigousParserColumn{
-		List<List<ParserColumn>> result = new ArrayList<List<ParserColumn>>();
+	//private List<List<ParserColumn>> getProjectionColumns(PlainSelect select, String unionId) throws AmbigousParserColumn{
+	private List<ParserColumn> getProjectionColumns(PlainSelect select) throws AmbigousParserColumn{
+		List<ParserColumn> result = new ArrayList<ParserColumn>();
 	
-		int index = 0;
+		int index = 1;
 		for (SelectItem selectItem : select.getSelectItems()) {
 			if (selectItem instanceof SelectExpressionItem) {
 				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItem;
@@ -582,22 +826,39 @@ public class Parser {
 
 				ParserColumn tempColumn = new ParserColumn(columnName, columnAlias, index);
 
+				//if(unionId != null && !unionId.isEmpty())
+				//	tempColumn.setUnionId(unionId);
+
 				if(column.getTable() == null)
 					throw new AmbigousParserColumn();
 				else{
-					ParserTable tableTemp = new ParserTable(column.getTable().getName(), column.getTable().getAlias() != null ? column.getTable().getAlias().getName() : null);
+					ParserTable tableTemp = null;
 
-					if(column.getTable().getSchemaName() != null) 
-						tableTemp.setSchema(column.getTable().getSchemaName());
-					if(column.getTable().getDatabase() != null)
-						tableTemp.setDatabase(column.getTable().getDatabase().getDatabaseName());   
+					
+					if(select.getFromItem() instanceof Table){
+						Table fromTable = (Table) select.getFromItem();
+						tableTemp = new ParserTable(fromTable.getName(), fromTable.getAlias() != null ? fromTable.getAlias().getName() : null);
 
+						if(column.getTable().getSchemaName() != null) 
+							tableTemp.setSchema(fromTable.getSchemaName());
+						if(column.getTable().getDatabase() != null)
+							tableTemp.setDatabase(fromTable.getDatabase().getDatabaseName());   
+					}else{
+						tableTemp = new ParserTable(column.getTable().getName());
+						//TODO: Rever mas não parece necessário 
+						/* 
+						new ParserTable(column.getTable().getName(), column.getTable().getAlias() != null ? column.getTable().getAlias().getName() : null);
+
+						if(column.getTable().getSchemaName() != null) 
+							tableTemp.setSchema(column.getTable().getSchemaName());
+						if(column.getTable().getDatabase() != null)
+							tableTemp.setDatabase(column.getTable().getDatabase().getDatabaseName());  
+						*/ 
+					}
 					tempColumn.setTable(tableTemp);
 				}
                 
-				List<ParserColumn> temp = new ArrayList<ParserColumn>();
-				temp.add(tempColumn);
-				result.add(temp);
+				result.add(tempColumn);
                 
 				index++;
             }            
@@ -617,6 +878,12 @@ public class Parser {
     private String getListAgg(String expression, char separator, String orderByColumn){
         return String.format("listagg(%s, '%c') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
     }
+
+	public void printWhere(){
+		for(List<ParserColumn> l : projectionColumns){
+			System.out.println(String.join(";", l.toString()));
+		}
+	}
 }
 
 /*
@@ -677,4 +944,48 @@ public class Parser {
 
         return plainSelect;
 	}
+
+	if(!alias.isEmpty()){
+					for(List<ParserColumn> list : unionColumns){
+						for(ParserColumn col : list){
+							for(List<ParserColumn> projCol : projectionColumns){
+								List<ParserColumn> filterTable = projCol.stream().filter(column -> column.getTable().getName().equals(alias) && column.getUnionId().equals(unionId)).collect(Collectors.toList());
+
+								if(filterTable.size() > 0){
+									for(ParserColumn column : filterTable){
+										if(column.getName().equals(col.getAlias())){
+											projCol.set(projCol.indexOf(column), col);
+										}else if(column.getName().equals(col.getName())){
+											int index = projCol.indexOf(column);
+											projCol.get(index).setTable(col.getTable());
+											projCol.get(index).setUnionId(col.getUnionId());
+										}
+										else{
+											projCol.add(col);
+										}
+									}
+								}
+							}
+						}
+					}					
+				}else{
+					for(List<ParserColumn> list : unionColumns){
+						for(ParserColumn col : list){
+							for(List<ParserColumn> projCol : projectionColumns){
+								for(ParserColumn column : projCol){
+									if(column.getName().equals(col.getAlias())){
+										projCol.set(projCol.indexOf(column), col);
+									}else if(column.getName().equals(col.getName())){
+										int index = projCol.indexOf(column);
+										projCol.get(index).setTable(col.getTable());
+										projCol.get(index).setUnionId(col.getUnionId());
+									}
+									else{
+										projCol.add(col);
+									}
+								}
+							}
+						}
+					}
+				}
  */

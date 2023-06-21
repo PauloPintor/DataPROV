@@ -9,14 +9,15 @@ import java.util.Objects;
  * @version 1.0
  * @since 1.0
 */
-public class ParserColumn {
+public class ParserColumn{
 	private String name;
     private String alias;
     private String asName;
     private int order;
     private ParserTable table;
+	private String unionId;
 
-    /**
+	/**
      * The class constructor
      * @param name the column's name
      * @param alias the column's alias if it has one
@@ -118,6 +119,27 @@ public class ParserColumn {
         this.table = table;
     }
 
+	/**
+	 * Get the unionId of the column
+	 * 
+	 * @return the column's unionId
+	 */
+	public String getUnionId() {
+		return unionId;
+	}
+
+	/**
+	 * Set the unionId of the column
+	 * @param unionId the unionId of the column
+	 */
+	public void setUnionId(String unionId) {
+		this.unionId = unionId;
+	}
+
+	public String toString() {
+		return table.toString()+":"+name;
+	}
+
 	@Override
     public boolean equals(Object o) {
         if (o == this)
@@ -126,6 +148,12 @@ public class ParserColumn {
             return false;
         }
         ParserColumn column = (ParserColumn) o;
-        return Objects.equals(name, column.name) && Objects.equals(alias, column.alias) && order == column.order && Objects.equals(table, column.table);
+        //return Objects.equals(name, column.name) && Objects.equals(alias, column.alias) && order == column.order && Objects.equals(table, column.table);
+		return Objects.equals(name, column.name) && Objects.equals(alias, column.alias) && Objects.equals(table, column.table);
+    }
+
+	@Override
+    public int hashCode() {    
+        return (this.name.hashCode() + this.table.hashCode());        
     }
 }

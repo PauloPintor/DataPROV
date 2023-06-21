@@ -1,9 +1,11 @@
 package com.generic.provenance;
 
 import java.sql.ResultSet;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import javax.sql.rowset.CachedRowSet;
-
 import com.generic.Helpers.TrinoHelper;
 import com.generic.Parser.Parser;
 
@@ -11,6 +13,8 @@ public class App
 {
     public static void main( String[] args )
     {
+
+
         Parser parser = new Parser();
         String a = "SELECT C.region FROM (SELECT A.region FROM ( SELECT m1.city, m1.region FROM d.public.mypersonnel m1 WHERE position like '% agent')A INNER JOIN (SELECT m1.city, m1.region FROM d.public.mypersonnel2 m1 WHERE position = 'Analyst')B ON A.city = B.city AND A.region = B.region WHERE A.city = 'Paris' GROUP BY A.region) C INNER JOIN (SELECT m2.region FROM d.public.mypersonnel m2 WHERE position = 'Director')D ON C.region = D.region";
 
@@ -21,7 +25,11 @@ public class App
 
 		//"SELECT d.public.country.country_id FROM d.public.country UNION SELECT c.country_id FROM (SELECT d.public.city.country_id FROM d.public.city inner join d.public.address ON d.public.city.city_id = d.public.address.city_id) c ";
 		
-		String sql = "SELECT table1.column1, table2.column2 FROM table1 INNER JOIN table2 ON table1.id = table2.id UNION SELECT table3.column1, table4.column2 FROM table INNER JOIN table4 ON table3.id = table4.id;";
+		//"SELECT d.public.country.country_id FROM d.public.country UNION SELECT c.country_id FROM (SELECT d.public.city.country_id FROM d.public.city inner join d.public.address ON d.public.city.city_id = d.public.address.city_id) c ";
+
+		String sql = "SELECT CONCAT(a.first_name,' ',a.last_name) as full_name, f.title, f.description, f.length FROM actor a JOIN film_actor fa ON a.actor_id=fa.actor_id JOIN film f ON f.film_id=fa.film_id";
+		
+		//"SELECT c.city FROM (SELECT mypersonnel.city, mypersonnel.region FROM mypersonnel UNION SELECT mypersonnel2.city, mypersonnel2.region FROM mypersonnel2 UNION SELECT mypersonnel.city, mypersonnel.region FROM mypersonnel) c";
 		
 		
 		//"SELECT mypersonnel.city, mypersonnel.region FROM mypersonnel UNION ALL SELECT mypersonnel2.city, mypersonnel2.region FROM mypersonnel2";
@@ -42,9 +50,10 @@ public class App
 
         //"SELECT m1.id, m2.name, m1.position FROM p.public.mypersonnel m1 INNER JOIN p.public.mypersonnel m2 ON m1.id = m2.id";
         try {
-            String newSQL = parser.parseQuery(sql);
+			String newSQL = parser.parseQuery(sql);
+            parser.printWhere();
 
-            TrinoHelper th = new TrinoHelper();
+			TrinoHelper th = new TrinoHelper();
             ResultSet result = th.ExecuteQuery(newSQL);
             CachedRowSet newResult = th.ResultSetToCachedRowSet(result);
             th.printQueryResult(newResult);

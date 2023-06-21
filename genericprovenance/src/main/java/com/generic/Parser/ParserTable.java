@@ -237,4 +237,11 @@ public class ParserTable {
         ParserTable table = (ParserTable) o;
         return Objects.equals(name, table.name) && Objects.equals(database, table.database) && Objects.equals(schema, table.schema) && Objects.equals(alias, table.alias);
     }
+
+		@Override
+    public int hashCode() {   
+		String _database = this.database != null ? this.database : "";
+		String _schema = this.schema != null ? this.schema : "";
+        return (_database.hashCode() + _schema.hashCode() + this.name.hashCode());        
+    }
 }
