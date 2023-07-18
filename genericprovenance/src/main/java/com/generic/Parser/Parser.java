@@ -1,19 +1,36 @@
 package com.generic.Parser;
 
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import com.generic.Helpers.ParserVisitors.ExistsVisitor;
+import com.generic.Helpers.ParserVisitors.FunctionProjection;
 
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
+import net.sf.jsqlparser.expression.Function;
+import net.sf.jsqlparser.expression.LongValue;
+import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
+import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
+import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
+import net.sf.jsqlparser.expression.operators.relational.ExistsExpression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
+import net.sf.jsqlparser.expression.operators.relational.GreaterThan;
+import net.sf.jsqlparser.expression.operators.relational.MinorThan;
+import net.sf.jsqlparser.parser.CCJSqlParserManager;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.select.FromItemVisitor;
+import net.sf.jsqlparser.statement.select.FromItemVisitorAdapter;
 import net.sf.jsqlparser.statement.select.GroupByElement;
 import net.sf.jsqlparser.statement.select.Join;
 import net.sf.jsqlparser.statement.select.PlainSelect;
@@ -21,10 +38,13 @@ import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.SelectBody;
 import net.sf.jsqlparser.statement.select.SelectExpressionItem;
 import net.sf.jsqlparser.statement.select.SelectItem;
+import net.sf.jsqlparser.statement.select.SelectItemVisitorAdapter;
+import net.sf.jsqlparser.statement.select.SelectVisitorAdapter;
 import net.sf.jsqlparser.statement.select.SetOperation;
 import net.sf.jsqlparser.statement.select.SetOperationList;
 import net.sf.jsqlparser.statement.select.SubSelect;
 import net.sf.jsqlparser.statement.select.UnionOp;
+import net.sf.jsqlparser.util.TablesNamesFinder;
 
 /** 
  * This class is responsible for parsing the SQL query
@@ -48,11 +68,15 @@ public class Parser {
 	public String parseQuery(String query) throws Exception {
 		Statement statement = CCJSqlParserUtil.parse(query);
         
+		List<String> tables = getTables(statement);
+
         String result = "";
 		
         if (statement instanceof Select) {
 			Select selectStatement = (Select) statement;
 			projectionColumns = new ArrayList<List<ParserColumn>>();
+
+
 
 			//[ ] It is not enough to be a SetOpeartionList, since Intersects are also a set of operations
 			if(selectStatement.getSelectBody() instanceof SetOperationList)
@@ -78,7 +102,15 @@ public class Parser {
 				}
             }else {                
                 PlainSelect plainSelect = (PlainSelect) selectStatement.getSelectBody();
-				projectionColumns = initializeProjCols(getProjectionColumns(plainSelect));
+
+				if(plainSelect.getWhere() != null){
+					CheckWhere(plainSelect);
+				}
+
+				FunctionProjection visitor = new FunctionProjection();
+            	plainSelect.getSelectItems().forEach(item -> item.accept(visitor));
+
+				//projectionColumns = initializeProjCols(getProjectionColumns(plainSelect));
                 if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()){
                     plainSelect = JoinProvenance(plainSelect);
                     selectStatement.setSelectBody(plainSelect);
@@ -98,15 +130,69 @@ public class Parser {
         return result;
 	}
 
+
+
+	private void CheckWhere(PlainSelect plainSelect) {
+		ExistsVisitor existsVisitor = new ExistsVisitor();
+		plainSelect.getWhere().accept(existsVisitor);
+
+		if(existsVisitor.hasExistsClause()){	
+			List<Join> joins = new ArrayList<>();
+			for(SubSelect select : existsVisitor.getSubSelects()){
+				Join newJoin = new Join();
+				newJoin.setRightItem(select);
+				newJoin.setSimple(true);
+				joins.add(newJoin);
+				plainSelect.setJoins(joins);
+			}
+
+			if(existsVisitor.getExpressions().size() > 1){
+				List<Expression> expressions = existsVisitor.getExpressions();
+				expressions.remove(0);
+				Expression where = plainSelect.getWhere();
+				for(Expression exp : expressions){
+					where = new AndExpression(where, exp);
+				}
+
+				plainSelect.setWhere(where);
+			}
+			/*for (Map.Entry<String,SubSelect> pair : existsVisitor.getSubSelects().entrySet()) {
+				Join newJoin = new Join();
+				newJoin.setRightItem(pair.getValue());
+				plainSelect.setJoins(new List<Join>() {
+					{
+						add(newJoin);
+					}
+				});
+			}*/
+		}
+
+		/*if (whereExpression instanceof AndExpression) {
+			AndExpression andExpression = (AndExpression) whereExpression;
+			Expression leftExpression = andExpression.getLeftExpression();
+			leftExpression.
+			andExpression.setRightExpression(null);
+			System.out.println();
+		} else if (whereExpression instanceof OrExpression) {
+			OrExpression orExpression = (OrExpression) whereExpression;
+		}*/
+	}
+
+	//Might be useful in the future
+	private List<String> getTables(Statement stmnt) throws JSQLParserException {
+		TablesNamesFinder tablesNamesFinder = new TablesNamesFinder();
+		return tablesNamesFinder.getTableList(stmnt);
+	}
+
 	//public PlainSelect JoinProvenance(PlainSelect plainSelect, String unionId) throws JSQLParserException, AmbigousParserColumn {
 	public PlainSelect JoinProvenance(PlainSelect plainSelect) throws JSQLParserException, AmbigousParserColumn {
         String provToken = "";
-        
+
         if(plainSelect.getFromItem() instanceof Table)
         {
             Table tempTable = (Table) plainSelect.getFromItem();
             //this.JoinWhereColumns(plainSelect, true);
-			this.SelectWhereColumns(plainSelect, null);
+			//this.SelectWhereColumns(plainSelect, null);
             provToken = (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getName())+".prov";
         }else if(plainSelect.getFromItem() instanceof SubSelect){
             SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
@@ -118,10 +204,10 @@ public class Parser {
             if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
 				//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
                 //tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect, unionId));
-				this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+				//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
                 tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
 			}else{
-				this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+				//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
                 tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
                 //this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
                 //tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect, unionId));
@@ -140,7 +226,7 @@ public class Parser {
                 //this.JoinWhereColumns(plainSelect, false);
             
                 Table tempTable = (Table) join.getRightItem();
-                provToken = provToken + "|| ' x ' ||"+(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getName())+".prov";
+                provToken = provToken + " || ' x ' || "+(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getName())+".prov";
             }
             else if(join.getRightItem() instanceof SubSelect)
             {
@@ -151,10 +237,10 @@ public class Parser {
 
                 //TODO: falta verificar para UNIONS, DISTINCTS, etc
                 if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
-					this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+					//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
                     tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
                 }else{
-                    this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+                    //this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
                     tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
                 }
                 
@@ -207,7 +293,7 @@ public class Parser {
 				}
 
 				//UnionWhereColumns(plainSelect, index == 0 ? true : false,"", unionID);
-				UnionWhereColumns(plainSelect, index == 0 ? true : false,"");
+				//UnionWhereColumns(plainSelect, index == 0 ? true : false,"");
 
 				//plainSelect = SelectProvenance(plainSelect, unionID);
 				plainSelect = SelectProvenance(plainSelect);
@@ -237,7 +323,7 @@ public class Parser {
 						selectItems.add(new SelectExpressionItem(new Column(listAgg)));
 					}
 					
-					UnionWhereColumns(tempPlainSelect, index == 0 ? true : false, tempSubSelect.getAlias().getName());
+					//UnionWhereColumns(tempPlainSelect, index == 0 ? true : false, tempSubSelect.getAlias().getName());
 
 					if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty())
 					{
@@ -383,6 +469,8 @@ public class Parser {
      * @return the select statement with the new Group By select and the prov column
      */
     private PlainSelect GroupByProvenance(PlainSelect groupBy){
+		//FIXME - This function is not working properly, if it is just a simple select with a group by it surrounds the query and it is not needed.
+		
         PlainSelect newPlainSelect = new PlainSelect();
         List<SelectItem> selectItems = new ArrayList<>();
         ExpressionList gpList = groupBy.getGroupBy().getGroupByExpressionList();
@@ -988,4 +1076,136 @@ public class Parser {
 						}
 					}
 				}
+
+
+
+
+				private static class ExistsVisitor extends ExpressionVisitorAdapter {
+        private boolean hasExistsClause = false;
+        private List<SubSelect> exists;
+
+		public ExistsVisitor(){
+			exists = new ArrayList<>();
+		}
+
+        @Override
+        public void visit(ExistsExpression existsExpression) {
+            hasExistsClause = true;
+
+			SubSelect existExp = (SubSelect) existsExpression.getRightExpression();
+            
+
+			if(existExp.getSelectBody() instanceof PlainSelect){
+				PlainSelect plainSelect = (PlainSelect) existExp.getSelectBody();
+
+				
+				FromItemVisitorAdapter fromVisitor = new FromItemVisitorAdapter() {
+					List<String> tables = new ArrayList<>();
+					@Override
+					public void visit(SubSelect subSelect) {
+						System.out.println("subselect=" + subSelect);
+						tables.add(subSelect.getAlias().getName());
+					}
+
+					@Override
+					public void visit(Table table) {
+						System.out.println("table=" + table);
+						tables.add(table.getFullyQualifiedName());
+					}
+				} ;
+
+				existExp.getSelectBody().accept(new SelectVisitorAdapter(){
+					@Override
+					public void visit(PlainSelect plainSelect) {
+						plainSelect.getFromItem().accept(fromVisitor);
+						if (plainSelect.getJoins()!=null)
+						   plainSelect.getJoins().forEach(join -> join.getRightItem().accept(fromVisitor));
+					}
+				});
+
+				plainSelect.getWhere().accept(new ExpressionVisitorAdapter(){
+					List<Expression> expressions = new ArrayList<>();
+					@Override
+					public void visit(EqualsTo equalsTo) {
+						equalsTo.getLeftExpression().accept(new ExpressionVisitorAdapter(){
+							@Override
+							public void visit(Column column) {
+								System.out.println("column=" + column);
+							}
+						});
+						equalsTo.getRightExpression().accept(new ExpressionVisitorAdapter(){
+							@Override
+							public void visit(Column column) {
+								System.out.println("column=" + column);
+							}
+						});
+						if(true)
+						{
+							expressions.add(equalsTo);
+							equalsTo.setLeftExpression(new LongValue(1));
+							equalsTo.setRightExpression(new LongValue(1));
+						}
+					}
+
+					@Override
+					public void visit(GreaterThan equalsTo) {
+						equalsTo.getLeftExpression().accept(new ExpressionVisitorAdapter(){
+							@Override
+							public void visit(Column column) {
+								System.out.println("column=" + column);
+							}
+						});
+						equalsTo.getRightExpression().accept(new ExpressionVisitorAdapter(){
+							@Override
+							public void visit(Column column) {
+								System.out.println("column=" + column);
+							}
+						});
+					}
+
+					@Override
+					public void visit(MinorThan equalsTo) {
+						equalsTo.getLeftExpression().accept(new ExpressionVisitorAdapter(){
+							@Override
+							public void visit(Column column) {
+								System.out.println("column=" + column);
+							}
+						});
+						equalsTo.getRightExpression().accept(new ExpressionVisitorAdapter(){
+							@Override
+							public void visit(Column column) {
+								System.out.println("column=" + column);
+							}
+						});
+					}
+				});
+			}
+
+			exists.add(existExp);
+			
+			//PlainSelect existSelelect = (PlainSelect) test.getSelectBody();
+
+			/*existSelelect.accept(new SelectVisitorAdapter() {
+                public void visit(SelectBody selectBody) {
+                    selectBody.accept(new SelectItemVisitorAdapter() {
+                        public void visit(Column column) {
+                            String tableName = column.getTable().getName();
+                            String attributeName = column.getColumnName();
+                            involvedTables.add(tableName);
+                            involvedAttributes.add(attributeName);
+                        }
+                    });
+                }
+			});
+			
+        }
+
+        public boolean hasExistsClause() {
+            return hasExistsClause;
+        }
+
+        public List<SubSelect> getExistsSelectBody() {
+            return exists;
+        }
+    }
  */
