@@ -1,4 +1,4 @@
-package com.generic.Helpers;
+package com.generic.Parser;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -29,31 +29,31 @@ public class ParserVisitors {
 	private static int count = 0;
 
 	public static class FunctionProjection extends SelectItemVisitorAdapter {
-		private boolean hasCountProjection = false;
+		private boolean hasFunction = false;
+		private String aggExpression = "";
 
 		@Override
 		public void visit(SelectExpressionItem item)  {
 			if(item.getExpression() instanceof Function){
 				Function function = (Function) item.getExpression();
 
-				function.accept(new ExpressionVisitorAdapter(){
-					@Override
-					public void visit(Column column) {
-						if(column.getColumnName().equals("*")){
-							hasCountProjection = true;
-						}
-					}
-				});
-				if(function.getName().equals("count")){
-					hasCountProjection = true;
+				if(function.getName().toLowerCase().equals("count")){
+					hasFunction = true;
+					aggExpression = "|| CAST(1 as varchar)";
+				}else if(function.getName().toLowerCase().equals("sum")){
+					hasFunction = true;
+					aggExpression = "|| ' x ' || CAST("+function.getParameters().toString()+" as varchar)";
 				}
 			}
+		}	
+
+		public boolean hasFunction() {
+			return hasFunction;
 		}
 
-		public boolean hasCountProjection() {
-			return hasCountProjection;
+		public String getAggExpression() {
+			return aggExpression;
 		}
-	
 	}
 
 	public static class ExistsVisitor extends ExpressionVisitorAdapter {

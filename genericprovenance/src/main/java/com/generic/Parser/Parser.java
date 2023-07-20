@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import com.generic.Helpers.ParserVisitors.ExistsVisitor;
-import com.generic.Helpers.ParserVisitors.FunctionProjection;
+import com.generic.Parser.ParserVisitors.ExistsVisitor;
+import com.generic.Parser.ParserVisitors.FunctionProjection;
 
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.Alias;
@@ -68,7 +68,7 @@ public class Parser {
 	public String parseQuery(String query) throws Exception {
 		Statement statement = CCJSqlParserUtil.parse(query);
         
-		List<String> tables = getTables(statement);
+		//List<String> tables = getTables(statement);
 
         String result = "";
 		
@@ -106,9 +106,6 @@ public class Parser {
 				if(plainSelect.getWhere() != null){
 					CheckWhere(plainSelect);
 				}
-
-				FunctionProjection visitor = new FunctionProjection();
-            	plainSelect.getSelectItems().forEach(item -> item.accept(visitor));
 
 				//projectionColumns = initializeProjCols(getProjectionColumns(plainSelect));
                 if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()){
@@ -193,7 +190,7 @@ public class Parser {
             Table tempTable = (Table) plainSelect.getFromItem();
             //this.JoinWhereColumns(plainSelect, true);
 			//this.SelectWhereColumns(plainSelect, null);
-            provToken = (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getName())+".prov";
+            provToken = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
         }else if(plainSelect.getFromItem() instanceof SubSelect){
             SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
             PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
@@ -226,7 +223,8 @@ public class Parser {
                 //this.JoinWhereColumns(plainSelect, false);
             
                 Table tempTable = (Table) join.getRightItem();
-                provToken = provToken + " || ' x ' || "+(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getName())+".prov";
+
+                provToken = provToken + " || ' . ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
             }
             else if(join.getRightItem() instanceof SubSelect)
             {
@@ -244,19 +242,43 @@ public class Parser {
                     tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
                 }
                 
-                provToken = provToken + "|| 'x' ||" + tempSubSelect.getAlias().getName()+".prov";
+                provToken = provToken + "|| ' . ' ||" + tempSubSelect.getAlias().getName()+".prov";
             }
             //this.AddUnionColumns(plainSelect, false);
         }
 
         SelectExpressionItem newColumn = new SelectExpressionItem();
-        newColumn.setExpression(new net.sf.jsqlparser.schema.Column("'(' || "+provToken+" || ')' as prov"));
-        plainSelect.addSelectItems(newColumn);
+		
+		FunctionProjection funcVisitor = new FunctionProjection();
+		plainSelect.getSelectItems().forEach(item -> item.accept(funcVisitor));
+		String aggFunction = "";
+		
+		if(funcVisitor.hasFunction()) aggFunction = funcVisitor.getAggExpression();
+
+		String provenance ="'(' || "+provToken+" || ')' " + aggFunction;
 
         if(plainSelect.getGroupBy() != null){
-            return GroupByProvenance(plainSelect);
-        }else
+			SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
+			String _column = "";
+			
+			if (firstSelectItem instanceof SelectExpressionItem) {
+				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) firstSelectItem;
+				if(selectExpressionItem.getExpression() instanceof Column){
+					Column column = (Column) selectExpressionItem.getExpression();
+					_column = column.getFullyQualifiedName();			
+				}else if(selectExpressionItem.getExpression() instanceof Function){
+					_column = "1";
+				}
+			}
+			String _listagg = getListAgg(provenance, '+', _column);
+			newColumn.setExpression(new net.sf.jsqlparser.schema.Column(_listagg+ " as prov"));
+        	plainSelect.addSelectItems(newColumn);
             return plainSelect;
+        }else{
+			newColumn.setExpression(new net.sf.jsqlparser.schema.Column(provenance + " as prov"));
+        	plainSelect.addSelectItems(newColumn);
+            return plainSelect;
+		}
     }
 
 	private PlainSelect UnionProvenance(SetOperationList setOperations) throws AmbigousParserColumn, JSQLParserException {
@@ -378,6 +400,21 @@ public class Parser {
 			{
                 plainSelect = JoinProvenance(plainSelect);
 				//plainSelect = JoinProvenance(plainSelect, unionId);
+			}
+			else if (projectionOnlyFunc(plainSelect.getSelectItems()))
+			{
+				FunctionProjection funcVisitor = new FunctionProjection();
+				plainSelect.getSelectItems().forEach(item -> item.accept(funcVisitor));
+				String aggFunction = "";
+				
+				if(funcVisitor.hasFunction()) aggFunction = funcVisitor.getAggExpression();
+
+				String provenance = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + tempTable.getFullyQualifiedName()+".prov" + aggFunction;
+
+				String _listagg = getListAgg(provenance, '+', "1");
+				SelectExpressionItem newColumn = new SelectExpressionItem();
+				newColumn.setExpression(new net.sf.jsqlparser.schema.Column(_listagg+ " as prov"));
+        		plainSelect.addSelectItems(newColumn);
 			}else{
 				SelectExpressionItem newColumn = new SelectExpressionItem();
 				
@@ -419,7 +456,7 @@ public class Parser {
 				{
 					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
 					//tempPlainSelect = JoinProvenance(tempPlainSelect, unionId);
-					SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
 					tempPlainSelect = JoinProvenance(tempPlainSelect);
 				}else{
 					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
@@ -427,18 +464,57 @@ public class Parser {
 					SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
 					tempPlainSelect = SelectProvenance(tempPlainSelect);
 				}
+
 			}			
 
+			FunctionProjection funcVisitor = new FunctionProjection();
+			plainSelect.getSelectItems().forEach(item -> item.accept(funcVisitor));
+			String aggFunction = "";
+				
+			if(funcVisitor.hasFunction()) aggFunction = funcVisitor.getAggExpression();
+
 			SelectExpressionItem newColumn = new SelectExpressionItem();
-			String prov = tempSubSelect.getAlias().getName()+".prov";
-			newColumn.setExpression(new Column(prov));
-			plainSelect.addSelectItems(newColumn);
+
+			if(plainSelect.getGroupBy() != null){
+				SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
+				String _column = "";
+				
+				if (firstSelectItem instanceof SelectExpressionItem) {
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) firstSelectItem;
+					if(selectExpressionItem.getExpression() instanceof Column){
+						Column column = (Column) selectExpressionItem.getExpression();
+						_column = column.getFullyQualifiedName();			
+					}else if(selectExpressionItem.getExpression() instanceof Function){
+						_column = "1";
+					}
+				}
+				String _listagg = getListAgg("'(' || "+tempSubSelect.getAlias().getName()+".prov "+aggFunction+" || ')'", '+', _column);
+				newColumn.setExpression(new net.sf.jsqlparser.schema.Column(_listagg+ " as prov"));
+				plainSelect.addSelectItems(newColumn);
+				return plainSelect;
+			}else{
+				String prov = tempSubSelect.getAlias().getName()+".prov "+aggFunction;
+				newColumn.setExpression(new Column(prov));
+				plainSelect.addSelectItems(newColumn);
+			}
 		}
 
         return plainSelect;
     }
 	
-    private PlainSelect DistinctProvenance(PlainSelect plainSelect, String alias) {
+    private boolean projectionOnlyFunc(List<SelectItem> selectItems) {
+		if(selectItems.size() == 1){
+			if(selectItems.get(0) instanceof SelectExpressionItem){
+				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItems.get(0);
+				if(selectExpressionItem.getExpression() instanceof Function){
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private PlainSelect DistinctProvenance(PlainSelect plainSelect, String alias) {
 		List<Expression> groupByExpressions = new ArrayList<>();
 
 		plainSelect.setDistinct(null);
@@ -461,6 +537,8 @@ public class Parser {
 
 		return plainSelect;
 	}
+
+	
 
 	/**
      * The function is responsible to deal with Group Bys. It receives as parameter a PlainSelect and creates a new select with the Group By columns and the prov column, surronding the select on the PlainSelect.
@@ -964,7 +1042,7 @@ public class Parser {
      * @return a String with the SQL Standard function 'ListAGG'
      */
     private String getListAgg(String expression, char separator, String orderByColumn){
-        return String.format("listagg(%s, '%c') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
+        return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
     }
 
 	public void printWhere(){

@@ -16,6 +16,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>1.7</maven.compiler.source>
     <maven.compiler.target>1.7</maven.compiler.target>
+	 <project.config>src/main/resources/config.properties</project.config>
   </properties>
 
   <dependencies>
@@ -41,6 +42,18 @@
       <artifactId>jsqlparser</artifactId>
       <version>4.6</version>
     </dependency>
+	<!-- https://mvnrepository.com/artifact/org.matheclipse/matheclipse-core -->
+	<dependency>
+		<groupId>org.matheclipse</groupId>
+		<artifactId>matheclipse-core</artifactId>
+		<version>2.0.0</version>
+	</dependency>
+	<!-- https://mvnrepository.com/artifact/com.google.guava/guava -->
+	<dependency>
+		<groupId>com.google.guava</groupId>
+		<artifactId>guava</artifactId>
+		<version>32.1.1-jre</version>
+	</dependency>
   </dependencies>
 
   <build>

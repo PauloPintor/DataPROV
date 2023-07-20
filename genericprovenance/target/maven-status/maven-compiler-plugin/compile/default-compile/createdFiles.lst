@@ -1,0 +1,17 @@
+com/generic/Parser/ParserVisitors$WhereColumns.class
+com/generic/Parser/ParserVisitors$ExistsVisitor.class
+com/generic/Helpers/ConfigHelper.class
+com/generic/ResultProcess/ResultProcess.class
+com/generic/Parser/InvalidParserOperation.class
+com/generic/provenance/App.class
+com/generic/Parser/Parser.class
+com/generic/Parser/ParserVisitors$FromTables.class
+com/generic/Parser/ParserTable.class
+com/generic/Helpers/TrinoHelper.class
+com/generic/Parser/ParserVisitors$FunctionProjection.class
+com/generic/Parser/ParserVisitors.class
+com/generic/Parser/ParserColumn.class
+com/generic/Parser/ParserVisitors$1.class
+com/generic/Parser/ParserVisitors$ExistsVisitor$1.class
+com/generic/Parser/AmbigousParserColumn.class
+com/generic/Parser/ParserVisitors$ExistsWhereExp.class
