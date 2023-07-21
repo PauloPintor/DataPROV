@@ -37,13 +37,16 @@ public class ResultProcess {
 				//System.out.print(rsmd.getColumnName(i) + " (" + rsmd.getColumnTypeName(i) + ") ");
 				if(rsmd.getColumnName(i).toLowerCase().equals("prov"))
 				{
+					System.out.println(_result.getString(rsmd.getColumnName(i)));
 					String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("x","\u2297");
 					row.put("how", prov);
 					row.put("why", processWhy(prov));
 				}	
 				else
 				{
+					//TODO deal with the problem of the same column name
 					Object columnValue = _result.getObject(rsmd.getColumnName(i));
+					System.out.println(columnValue);
 					row.put(rsmd.getColumnName(i), columnValue);
 				}
 			}

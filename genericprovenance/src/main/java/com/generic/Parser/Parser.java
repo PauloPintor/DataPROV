@@ -17,6 +17,7 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.expression.Function;
 import net.sf.jsqlparser.expression.LongValue;
+import net.sf.jsqlparser.expression.operators.arithmetic.Multiplication;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
 import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
@@ -29,6 +30,7 @@ import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.select.FromItem;
 import net.sf.jsqlparser.statement.select.FromItemVisitor;
 import net.sf.jsqlparser.statement.select.FromItemVisitorAdapter;
 import net.sf.jsqlparser.statement.select.GroupByElement;
@@ -133,17 +135,100 @@ public class Parser {
 		ExistsVisitor existsVisitor = new ExistsVisitor();
 		plainSelect.getWhere().accept(existsVisitor);
 
-		if(existsVisitor.hasExistsClause()){	
+		if(existsVisitor.hasInClause()){
+			if(existsVisitor.getSubSelects().size() > 0){
+				PlainSelect _plainSelect = new PlainSelect();
+				List<Table> joinTables = extractJoinTables(plainSelect);
+				List<Join> joins = new ArrayList<>();
+				for(SubSelect select : existsVisitor.getSubSelects()){
+					List<Expression> inExpressions = new ArrayList<>();
+					Column _col1 = (Column)existsVisitor.getInExpressions().get(0);
+					Column _col2 = (Column)existsVisitor.getInExpressions().get(1);
+					
+					if(joinTables.stream().filter(t -> t.getFullyQualifiedName().equals(_col1.getTable().getFullyQualifiedName())).collect(Collectors.toList()).size() > 0){
+						if(_plainSelect.getFromItem() == null){
+							_plainSelect.setFromItem(_col1.getTable());
+						}else{
+							Join _newJoin = new Join();
+							_newJoin.setRightItem(_col1.getTable());
+							_newJoin.setSimple(true);
+							joins.add(_newJoin);
+							_plainSelect.addJoins(joins);
+						}
+						joinTables.removeAll(joinTables.stream().filter(t -> t.getFullyQualifiedName().equals(_col1.getTable().getFullyQualifiedName())).collect(Collectors.toList()));
+					}else if(joinTables.stream().filter(t -> t.getFullyQualifiedName().equals(_col2.getTable().getFullyQualifiedName())).collect(Collectors.toList()).size() > 0){
+						if(_plainSelect.getFromItem() == null){
+							_plainSelect.setFromItem(_col2.getTable());
+						}else{
+							Join _newJoin = new Join();
+							_newJoin.setRightItem(_col2.getTable());
+							_newJoin.setSimple(true);
+							joins.add(_newJoin);
+							_plainSelect.addJoins(joins);
+						}
+						joinTables.removeAll(joinTables.stream().filter(t -> t.getFullyQualifiedName().equals(_col2.getTable().getFullyQualifiedName())).collect(Collectors.toList()));
+					}
+
+					Join newJoin = new Join();
+					
+					newJoin.setRightItem(select);
+					newJoin.setLeft(true);
+					newJoin.setOuter(true);
+
+					inExpressions.add(new EqualsTo(existsVisitor.getInExpressions().get(0),existsVisitor.getInExpressions().get(1)));
+					newJoin.setOnExpressions(inExpressions);
+					joins.add(newJoin);
+
+				}
+
+				if(joinTables.size() > 0){
+					for(Table table : joinTables){
+						Join newJoin = new Join();
+						newJoin.setRightItem(table);
+						newJoin.setSimple(true);
+						joins.add(newJoin);
+						
+					}
+				}
+
+				_plainSelect.addJoins(joins);
+				plainSelect.setFromItem(_plainSelect.getFromItem());
+				plainSelect.setJoins(_plainSelect.getJoins());
+			}else{
+				List<Join> joins = new ArrayList<>();
+				for(String table : existsVisitor.getInTables()){
+					Join newJoin = new Join();
+					newJoin.setRightItem(new Table(table));
+					newJoin.setLeft(true);
+					newJoin.setOuter(true);
+					List<Expression> inExpressions = new ArrayList<>();
+					inExpressions.add(new EqualsTo(existsVisitor.getInExpressions().get(0),existsVisitor.getInExpressions().get(1)));
+					newJoin.setOnExpressions(inExpressions);
+					joins.add(newJoin);
+					plainSelect.addJoins(joins);
+				}
+			}
+			if(existsVisitor.hasAndClause() && existsVisitor.getInWhereExp() != null){
+				Expression where = plainSelect.getWhere();
+				where = new AndExpression(where, existsVisitor.getInWhereExp());
+				plainSelect.setWhere(where);
+			}else if(!existsVisitor.hasAndClause()){
+				plainSelect.setWhere(new EqualsTo(new LongValue(1),new LongValue(1)));
+				if(existsVisitor.getInWhereExp() != null) plainSelect.setWhere(existsVisitor.getInWhereExp());
+			}
+		}
+
+		if(existsVisitor.hasExistsClause() || existsVisitor.hasSubSelect()){	
 			List<Join> joins = new ArrayList<>();
 			for(SubSelect select : existsVisitor.getSubSelects()){
 				Join newJoin = new Join();
 				newJoin.setRightItem(select);
 				newJoin.setSimple(true);
 				joins.add(newJoin);
-				plainSelect.setJoins(joins);
+				plainSelect.addJoins(joins);
 			}
 
-			if(existsVisitor.getExpressions().size() > 1){
+			if(existsVisitor.hasAndClause() && existsVisitor.getExpressions().size() > 1){
 				List<Expression> expressions = existsVisitor.getExpressions();
 				expressions.remove(0);
 				Expression where = plainSelect.getWhere();
@@ -152,27 +237,26 @@ public class Parser {
 				}
 
 				plainSelect.setWhere(where);
-			}
-			/*for (Map.Entry<String,SubSelect> pair : existsVisitor.getSubSelects().entrySet()) {
-				Join newJoin = new Join();
-				newJoin.setRightItem(pair.getValue());
-				plainSelect.setJoins(new List<Join>() {
-					{
-						add(newJoin);
-					}
-				});
-			}*/
-		}
+			}else if(existsVisitor.hasSubSelect() && existsVisitor.getExpressions().size() > 0){
+				List<Expression> expressions = existsVisitor.getExpressions();
+				Expression where = plainSelect.getWhere();
+				for(Expression exp : expressions){
+					where = new AndExpression(where, exp);
+				}
 
-		/*if (whereExpression instanceof AndExpression) {
-			AndExpression andExpression = (AndExpression) whereExpression;
-			Expression leftExpression = andExpression.getLeftExpression();
-			leftExpression.
-			andExpression.setRightExpression(null);
-			System.out.println();
-		} else if (whereExpression instanceof OrExpression) {
-			OrExpression orExpression = (OrExpression) whereExpression;
-		}*/
+				plainSelect.setWhere(where);
+			}else if(!existsVisitor.hasAndClause() && !existsVisitor.hasSubSelect()){
+				plainSelect.setWhere(new EqualsTo(new LongValue(1),new LongValue(1)));
+				if(existsVisitor.getExpressions().size() > 0){
+					Expression where = plainSelect.getWhere();
+					for(Expression exp : existsVisitor.getExpressions()){
+						where = new AndExpression(where, exp);
+					}
+
+					plainSelect.setWhere(where);
+				}
+			}
+		}
 	}
 
 	//Might be useful in the future
@@ -223,8 +307,14 @@ public class Parser {
                 //this.JoinWhereColumns(plainSelect, false);
             
                 Table tempTable = (Table) join.getRightItem();
-
-                provToken = provToken + " || ' . ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+				if(join.isLeft()){
+					provToken = "COALESCE(" + provToken + " || ' . ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov, "+provToken+")";
+				}else if(join.isRight()){
+					String leftProv = tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+					provToken = "COALESCE(" + provToken + " || ' . ' || "+leftProv+", "+leftProv+")";
+				}else{
+                	provToken = provToken + " || ' . ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+				}
             }
             else if(join.getRightItem() instanceof SubSelect)
             {
@@ -257,7 +347,7 @@ public class Parser {
 
 		String provenance ="'(' || "+provToken+" || ')' " + aggFunction;
 
-        if(plainSelect.getGroupBy() != null){
+        if(plainSelect.getGroupBy() != null || projectionOnlyFunc(plainSelect.getSelectItems())){
 			SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
 			String _column = "";
 			
@@ -413,8 +503,31 @@ public class Parser {
 
 				String _listagg = getListAgg(provenance, '+', "1");
 				SelectExpressionItem newColumn = new SelectExpressionItem();
-				newColumn.setExpression(new net.sf.jsqlparser.schema.Column(_listagg+ " as prov"));
+				newColumn.setExpression(new Column(_listagg+ " as prov"));
         		plainSelect.addSelectItems(newColumn);
+			}else if(plainSelect.getGroupBy() != null)
+			{
+				//TODO este é o código do GROUP BY já se está a repetir duas vezes, colocar numa função
+				SelectExpressionItem newColumn = new SelectExpressionItem();
+				SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
+				String _column = "";
+				String provenance = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + tempTable.getFullyQualifiedName() + ".prov";
+				if (firstSelectItem instanceof SelectExpressionItem) {
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) firstSelectItem;
+					if(selectExpressionItem.getExpression() instanceof Column){
+						Column column = (Column) selectExpressionItem.getExpression();
+						_column = column.getFullyQualifiedName();			
+					}else{ //(if(selectExpressionItem.getExpression() instanceof Function){
+						FunctionProjection funcVisitor = new FunctionProjection();
+						plainSelect.getSelectItems().forEach(item -> item.accept(funcVisitor));
+						if(funcVisitor.hasFunction())
+							provenance += funcVisitor.getAggExpression();
+						_column = "1";
+					}
+				}
+				String _listagg = getListAgg(provenance, '+', _column);
+				newColumn.setExpression(new net.sf.jsqlparser.schema.Column("'(' ||"+_listagg+ "|| ')' as prov"));
+				plainSelect.addSelectItems(newColumn);
 			}else{
 				SelectExpressionItem newColumn = new SelectExpressionItem();
 				
@@ -461,7 +574,7 @@ public class Parser {
 				}else{
 					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
 					//tempPlainSelect = SelectProvenance(tempPlainSelect, unionId);
-					SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
 					tempPlainSelect = SelectProvenance(tempPlainSelect);
 				}
 
@@ -503,15 +616,18 @@ public class Parser {
     }
 	
     private boolean projectionOnlyFunc(List<SelectItem> selectItems) {
+		boolean result = false;
 		if(selectItems.size() == 1){
 			if(selectItems.get(0) instanceof SelectExpressionItem){
 				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItems.get(0);
 				if(selectExpressionItem.getExpression() instanceof Function){
-					return true;
+					result = true;
+				}else if(selectExpressionItem.getExpression() instanceof Multiplication){
+					result = true;
 				}
 			}
 		}
-		return false;
+		return result;
 	}
 
 	private PlainSelect DistinctProvenance(PlainSelect plainSelect, String alias) {
@@ -1043,6 +1159,32 @@ public class Parser {
      */
     private String getListAgg(String expression, char separator, String orderByColumn){
         return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
+    }
+
+	private List<Table> extractJoinTables(PlainSelect plainSelect ) {
+        List<Table> joinTables = new ArrayList<>();
+
+        try {
+            // First, add the table from the main "FROM" clause
+            FromItem mainFromItem = plainSelect.getFromItem();
+            if (mainFromItem instanceof Table) {
+                joinTables.add((Table) mainFromItem);
+            }
+
+            // Then, iterate over the join clauses and add join tables
+            if (plainSelect.getJoins() != null) {
+                for (Join join : plainSelect.getJoins()) {
+                    FromItem joinFromItem = join.getRightItem();
+                    if (joinFromItem instanceof Table) {
+                        joinTables.add((Table) joinFromItem);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return joinTables;
     }
 
 	public void printWhere(){
