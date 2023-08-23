@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.List;
 
 import net.sf.jsqlparser.expression.Alias;
+import net.sf.jsqlparser.expression.CaseExpression;
 import net.sf.jsqlparser.expression.DoubleValue;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
@@ -52,9 +53,15 @@ public class ParserVisitors {
 				}else if(function.getName().toLowerCase().equals("sum")){
 					if(hasColumns(function.getParameters())){
 						hasFunction = true;
+						aggExpression += "|| ' x ' || CAST("+function.getParameters().toString()+" as varchar)";
+					}
+				}else if(function.getName().toLowerCase().equals("min")){
+					if(hasColumns(function.getParameters())){
+						hasFunction = true;
 						aggExpression = "|| ' x ' || CAST("+function.getParameters().toString()+" as varchar)";
 					}
 				}
+
 			}else if(item.getExpression() instanceof Multiplication){
 				Multiplication multiplication = (Multiplication) item.getExpression();
 				
@@ -94,12 +101,17 @@ public class ParserVisitors {
 
 		private boolean hasColumns(ExpressionList parameters){
 			for(Expression e : parameters.getExpressions()){
-				if(e instanceof Column){
+				if(e instanceof Column || e instanceof CaseExpression){
 					return true;
 				}else if(e instanceof Addition){
 					Addition addition = (Addition) e;
 					ExpressionList expressionList = new ExpressionList();
 					expressionList.addExpressions(addition.getLeftExpression(), addition.getRightExpression());
+					return hasColumns(expressionList);
+				}else if(e instanceof Multiplication){
+					Multiplication multiplication = (Multiplication) e;
+					ExpressionList expressionList = new ExpressionList();
+					expressionList.addExpressions(multiplication.getLeftExpression(), multiplication.getRightExpression());
 					return hasColumns(expressionList);
 				}
 			}
@@ -129,6 +141,7 @@ public class ParserVisitors {
 		private List<Expression> inExpressions;
 		private boolean _hasInClause = false;
 		private boolean _hasExistsClause = false;
+		private boolean _hasSubSelect = false;
 		
 		
 
@@ -281,8 +294,31 @@ public class ParserVisitors {
 		}
 
 		@Override
+		public void visit(EqualsTo equalsTo) {
+			equalsTo.getLeftExpression().accept(this);
+			if(hasSubSelect){
+				if(exists.get(count - 1).getSelectBody() instanceof PlainSelect){
+					PlainSelect plainSelect = (PlainSelect) exists.get(count - 1).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					equalsTo.setRightExpression(new Column("C"+(count-1)+"."+selectExpressionItem.getAlias().getName()));
+				}
+			}
+			equalsTo.getRightExpression().accept(this);
+			if(hasSubSelect){
+				if(exists.get(count - 1).getSelectBody() instanceof PlainSelect){
+					PlainSelect plainSelect = (PlainSelect) exists.get(count - 1).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					equalsTo.setRightExpression(new Column("C"+(count-1)+"."+selectExpressionItem.getAlias().getName()));
+				}
+			}
+		}
+
+		@Override
 		public void visit(SubSelect subSelect) {
 			hasSubSelect = true;
+			_hasSubSelect = true;
+			boolean minMax = false;
+
 			if(subSelect.getSelectBody() instanceof PlainSelect){
 				PlainSelect plainSelect = (PlainSelect) subSelect.getSelectBody();
 
@@ -315,12 +351,18 @@ public class ParserVisitors {
 								temp.addAll(whereVisitor.getColumns());
 								whereVisitor.setColumns(temp);
 							}
-
-						}else{
+						}
+						else{
 							if(selectExpressionItem.getAlias() == null){
 								selectExpressionItem.setAlias(new Alias("CL" + count));
 							}
-						}
+							if(selectExpressionItem.getExpression() instanceof Function){
+								Function function = (Function) selectExpressionItem.getExpression();
+								if(function.getName().toLowerCase().equals("min")){
+									minMax = true;
+								}
+							}
+						}						
 					}
 				}
 
@@ -328,6 +370,62 @@ public class ParserVisitors {
 					if(!plainSelect.getSelectItems().contains(new SelectExpressionItem(c))){
 						plainSelect.addSelectItems(new SelectExpressionItem(c));
 						plainSelect.addGroupByColumnReference(new SelectExpressionItem(c).getExpression());
+					}
+				}
+
+				List<Join> _join = new ArrayList<>();
+				if(minMax){
+					SubSelect _subSelect = new SubSelect();
+					//PlainSelect _plainSelect = new PlainSelect();
+					//_plainSelect = plainSelect;
+					// Step 2: Create a new SelectItem (column to be selected)
+					SelectExpressionItem selectItem = new SelectExpressionItem();
+					selectItem.setExpression(new Column("column1"));
+			
+					// Step 3: Add the SelectItem to the SelectItems list
+					PlainSelect _plainSelect = new PlainSelect();
+					_plainSelect.addSelectItems(plainSelect.getSelectItems());
+
+					_plainSelect.setFromItem(plainSelect.getFromItem());
+					_plainSelect.addJoins(plainSelect.getJoins());
+					_plainSelect.setWhere(plainSelect.getWhere());
+					_plainSelect.setGroupByElement(plainSelect.getGroupBy());
+
+					_subSelect.setSelectBody(_plainSelect);
+					_subSelect.setAlias(new Alias("MinMax" + count));
+					Join _newJoin = new Join();
+					_newJoin.setRightItem(_subSelect);
+					_newJoin.setSimple(true);		
+					_join.add(_newJoin);
+						
+					plainSelect.addJoins(_join);
+				
+
+					for (SelectItem _selectItem : plainSelect.getSelectItems()) {
+						if (_selectItem instanceof SelectExpressionItem) {
+							SelectExpressionItem selectExpressionItem = (SelectExpressionItem) _selectItem;
+							
+							if(selectExpressionItem.getExpression() instanceof Function){
+								EqualsTo equalsTo = new EqualsTo();
+								equalsTo.setLeftExpression(new Column(selectExpressionItem.getAlias().getName()));
+								equalsTo.setRightExpression(new Column(new Table("MinMax" + count),selectExpressionItem.getAlias().getName()));
+								
+								Expression where = plainSelect.getWhere();
+								where = new AndExpression(where, equalsTo);
+								plainSelect.setWhere(where);
+								
+							}else{
+								Column column = (Column) selectExpressionItem.getExpression();
+								EqualsTo equalsTo = new EqualsTo();
+								equalsTo.setLeftExpression(column);
+								Column newColumn = new Column(new Table("MinMax" + count), column.getColumnName());
+								equalsTo.setRightExpression(newColumn);
+								
+								Expression where = plainSelect.getWhere();
+								where = new AndExpression(where, equalsTo);
+								plainSelect.setWhere(where);
+							}						
+						}            
 					}
 				}
 
@@ -340,6 +438,11 @@ public class ParserVisitors {
 
 		@Override
         public void visit(InExpression inExpression) {
+
+			if(!(inExpression.getLeftExpression() instanceof SubSelect)){
+				return;
+			}
+			
 			hasInClause = true;
 			_hasInClause = true;
 

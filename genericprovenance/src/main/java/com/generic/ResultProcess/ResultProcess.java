@@ -5,15 +5,18 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.matheclipse.core.eval.ExprEvaluator;
 import org.matheclipse.core.expression.F;
+import org.matheclipse.core.expression.S;
 import org.matheclipse.core.interfaces.IExpr;
 
 import com.google.common.collect.BiMap;
@@ -37,7 +40,7 @@ public class ResultProcess {
 				//System.out.print(rsmd.getColumnName(i) + " (" + rsmd.getColumnTypeName(i) + ") ");
 				if(rsmd.getColumnName(i).toLowerCase().equals("prov"))
 				{
-					System.out.println(_result.getString(rsmd.getColumnName(i)));
+					//System.out.println(_result.getString(rsmd.getColumnName(i)));
 					String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("x","\u2297");
 					row.put("how", prov);
 					row.put("why", processWhy(prov));
@@ -46,7 +49,7 @@ public class ResultProcess {
 				{
 					//TODO deal with the problem of the same column name
 					Object columnValue = _result.getObject(rsmd.getColumnName(i));
-					System.out.println(columnValue);
+					//System.out.println(columnValue);
 					row.put(rsmd.getColumnName(i), columnValue);
 				}
 			}
@@ -96,7 +99,7 @@ public class ResultProcess {
     }
 
 	private String processWhy(String prov) {
-		
+		String why = "";
 		Pattern pattern = Pattern.compile("\u2297\\s*\\d+(\\.\\d+([Ee][+-]?\\d+)?)?\\s*");
         Matcher matcher = pattern.matcher(prov);
         StringBuffer sb = new StringBuffer();
@@ -104,7 +107,7 @@ public class ResultProcess {
             matcher.appendReplacement(sb, "");
         }
         matcher.appendTail(sb);
-        prov = sb.toString();
+        //prov = sb.toString();
 		
 		// Regular expression pattern to match words containing ':'
         String regex = "\\w+:[\\w:]+";
@@ -113,50 +116,59 @@ public class ResultProcess {
         pattern = Pattern.compile(regex);
         
         // Create a Matcher object
-        matcher = pattern.matcher(prov);
+        matcher = pattern.matcher(sb.toString());
         
 		int i = 0;
-		BiMap<String, String> mapTokens = HashBiMap.create();
-		//HashMap<String, String> map = new HashMap<String, String>();
+		//BiMap<String, String> mapTokens = HashBiMap.create();
+		HashMap<String, String> mapTokens = new HashMap<String, String>();
 
-        // Find and print all matching words
-        while (matcher.find()) {
-            String word = matcher.group();
-			mapTokens.put(word, "x"+i);
-			i++;
-        } 
 
-		for (Map.Entry<String, String> entry : mapTokens.entrySet()) {
-			//System.out.println(entry.getKey());
-			//System.out.println(entry.getValue());
-			prov = prov.replaceAll(entry.getKey(), entry.getValue());	
-		}
+		String mathResult = "";
+		prov = sb.toString();
 
-		ExprEvaluator util = new ExprEvaluator();
-		IExpr expr = util.eval(prov);
-		//IExpr expr = util.eval("((x4 * x3) + (x3 * x4))");
-
-		IExpr result = util.eval(F.Distribute(expr));
-		// print: a*b+a*c
-		String regexMath = "(\\w+)\\^\\d+";
-		String mathResult = result.toString();
-		mathResult = mathResult.replaceAll(regexMath, "$1");
-
-		//System.out.println(mathResult);
-
-		String[] list = mathResult.split("\\+");
-		String why = "";
-		for (String string : list) {
-			why = why + "{";
-			for(String s : string.split("\\.")){
-				String _key = mapTokens.inverse().get(s);
-				if(_key != null){
-					why = why + _key + ",";
+		if(prov.indexOf(") .") != -1 || prov.indexOf(". (") != -1)
+		{
+			System.out.println("FAITES ATTENTION");
+			while (matcher.find()) {
+				String word = matcher.group();
+				if(!mapTokens.containsKey(word)){
+					mapTokens.put(word, "x"+i);
+					prov = prov.replace(word, "x"+i);
+					i++;
 				}
-			}
-			why = why.substring(0,why.length()-1)+ "},";
-		}
+			} 
 
-		return "{"+why.substring(0,why.length()-1)+"}";
+			ExprEvaluator util = new ExprEvaluator();
+			IExpr expr = util.eval(prov);
+
+			IExpr result = util.eval(F.Distribute(expr));
+			
+			String regexMath = "(\\w+)\\^\\d+";
+			mathResult = result.toString().replace(regexMath, "$1");
+
+			why = "{" + mathResult.replace(".", ",")
+						    .replace("+", "},{")
+							+ "}";
+			
+			for (Map.Entry<String, String> entry : mapTokens.entrySet()) 
+				why = why.replaceAll(entry.getKey(), entry.getValue());	
+		}
+		else
+		{
+
+			why = prov.replace(" . ", ",")
+							 .replace("+", ",")
+							 .replace("(", "{")
+							 .replace(")", "}");
+
+			if(why.contains("{{") || why.contains("}}")){
+				why = why.replace("{{", "{")
+					     .replace("}}", "}");
+			}
+
+		}		
+
+		return "{"+why+"}";
+
 	}
 }

@@ -125,7 +125,7 @@ public class Parser {
 			throw new InvalidParserOperation();
 		}		
 
-        System.out.println(result);
+        //System.out.println(result);
         return result;
 	}
 
@@ -318,21 +318,24 @@ public class Parser {
             }
             else if(join.getRightItem() instanceof SubSelect)
             {
+				
                 SubSelect tempSubSelect = (SubSelect) join.getRightItem();
-                PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
-            
-                //SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
+                if(!tempSubSelect.getAlias().getName().toLowerCase().contains("minmax")){
+					PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
+				
+					//SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
 
-                //TODO: falta verificar para UNIONS, DISTINCTS, etc
-                if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
-					//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
-                    tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
-                }else{
-                    //this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
-                    tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
-                }
-                
-                provToken = provToken + "|| ' . ' ||" + tempSubSelect.getAlias().getName()+".prov";
+					//TODO: falta verificar para UNIONS, DISTINCTS, etc
+					if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
+						//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+						tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
+					}else{
+						//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+						tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
+					}
+					
+					provToken = provToken + "|| ' . ' ||" + tempSubSelect.getAlias().getName()+".prov";
+				}
             }
             //this.AddUnionColumns(plainSelect, false);
         }
@@ -1158,7 +1161,8 @@ public class Parser {
      * @return a String with the SQL Standard function 'ListAGG'
      */
     private String getListAgg(String expression, char separator, String orderByColumn){
-        return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
+        //return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
+		return String.format("STRING_AGG(%s, ' %c ' ORDER BY %s)", expression, separator, orderByColumn);
     }
 
 	private List<Table> extractJoinTables(PlainSelect plainSelect ) {

@@ -8,6 +8,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.sql.rowset.CachedRowSet;
+
+import com.generic.Helpers.PostgresHelper;
 import com.generic.Helpers.TrinoHelper;
 import com.generic.Parser.Parser;
 import com.generic.ResultProcess.ResultProcess;
@@ -15,25 +17,38 @@ import com.generic.ResultProcess.ResultProcess;
 public class App 
 {
     public static void main( String[] args )
-    {	
+    {
 
-		String sql = "SELECT ca.tpch1.partsupp.suppkey FROM ca.tpch1.partsupp WHERE ca.tpch1.partsupp.partkey IN ( SELECT ca.tpch1.part.partkey FROM ca.tpch1.part WHERE ca.tpch1.part.name LIKE 'forest%') AND ca.tpch1.partsupp.availqty > (SELECT 0.5 * SUM(ca.tpch1.lineitem.quantity) FROM ca.tpch1.lineitem WHERE ca.tpch1.lineitem.partkey = ca.tpch1.partsupp.partkey AND ca.tpch1.lineitem.suppkey = ca.tpch1.partsupp.suppkey AND ca.tpch1.lineitem.shipdate >= DATE '1994-1-1' AND ca.tpch1.lineitem.shipdate < DATE '1994-1-1' + interval '1' year)";
 
-sql = "SELECT ca.tpch1.supplier.name, ca.tpch1.supplier.address FROM ca.tpch1.supplier, ca.tpch1.nation WHERE ca.tpch1.supplier.suppkey IN (SELECT ca.tpch1.partsupp.suppkey FROM ca.tpch1.partsupp WHERE ca.tpch1.partsupp.partkey IN ( SELECT ca.tpch1.part.partkey FROM ca.tpch1.part WHERE ca.tpch1.part.name LIKE 'forest%') AND ca.tpch1.partsupp.availqty > (SELECT 0.5 * SUM(ca.tpch1.lineitem.quantity) FROM ca.tpch1.lineitem WHERE ca.tpch1.lineitem.partkey = ca.tpch1.partsupp.partkey AND ca.tpch1.lineitem.suppkey = ca.tpch1.partsupp.suppkey AND ca.tpch1.lineitem.shipdate >= DATE '1994-1-1' AND ca.tpch1.lineitem.shipdate < DATE '1994-1-1' + interval '1' year)) AND ca.tpch1.supplier.nationkey = ca.tpch1.nation.nationkey AND ca.tpch1.nation.name = 'CANADA' ORDER BY ca.tpch1.supplier.name";
-		
+		String sql = "\t\tselect d_year, p_brand1 from lineorder, date_dim, part, supplier where lo_orderdate = d_datekey and lo_partkey = p_partkey and lo_suppkey = s_suppkey and p_category = 'MFGR#12' and s_region = 'AMERICA' group by d_year, p_brand1 order by d_year, p_brand1";
+
         try {
+			long start = System.currentTimeMillis();
+			
 			Parser parser = new Parser();
-			String newSQL = parser.parseQuery(sql);
+			sql = parser.parseQuery(sql);
 
+			System.out.println(sql);
+
+			long annotations = System.currentTimeMillis();
 			TrinoHelper th = new TrinoHelper();
-            ResultSet result = th.ExecuteQuery(newSQL);
-			//CachedRowSet newResult = th.ResultSetToCachedRowSet(result);
-            //th.printQueryResult(newResult);
+			//PostgresHelper ph = new PostgresHelper();
+            //ResultSet result = ph.ExecuteQuery(sql);
+			ResultSet result = th.ExecuteQuery(sql);
+			long query = System.currentTimeMillis();
+
 			ResultProcess rp = new ResultProcess();
 			rp.processing(result);
-			rp.printResult();
+
+			long end = System.currentTimeMillis();
+			float annTime = (annotations - start) / 1000F;
+			float qTime = (query - annotations) / 1000F;
+      		float sec = (end - start) / 1000F; 
+			System.out.println("Annotations : " +annTime + " sec Query : " +qTime + " sec Final : " +sec + " sec");
+ 
+			
+			//rp.printResult();
         } catch (Exception e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
     }
