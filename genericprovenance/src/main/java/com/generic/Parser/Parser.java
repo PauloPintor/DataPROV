@@ -59,12 +59,15 @@ public class Parser {
 
 	private List<List<ParserColumn>> projectionColumns;
 	private int unionCounter = 0;
+	private String dbname = "";
 
 	/**
 	 * The class constructor
 	 * 
 	 */
-	public Parser(){
+	public Parser(String dbname){
+		this.dbname = dbname;
+
 	}
 
 	public String parseQuery(String query) throws Exception {
@@ -136,11 +139,11 @@ public class Parser {
 		plainSelect.getWhere().accept(existsVisitor);
 
 		if(existsVisitor.hasInClause()){
-			if(existsVisitor.getSubSelects().size() > 0){
+			if(existsVisitor.getInSubSelects().size() > 0){
 				PlainSelect _plainSelect = new PlainSelect();
 				List<Table> joinTables = extractJoinTables(plainSelect);
 				List<Join> joins = new ArrayList<>();
-				for(SubSelect select : existsVisitor.getSubSelects()){
+				for(SubSelect select : existsVisitor.getInSubSelects()){
 					List<Expression> inExpressions = new ArrayList<>();
 					Column _col1 = (Column)existsVisitor.getInExpressions().get(0);
 					Column _col2 = (Column)existsVisitor.getInExpressions().get(1);
@@ -277,24 +280,48 @@ public class Parser {
             provToken = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
         }else if(plainSelect.getFromItem() instanceof SubSelect){
             SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
-            PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
-            
-            //SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
 
-            //TODO: falta verificar para UNIONS, DISTINCTS, etc
-            if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
-				//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
-                //tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect, unionId));
-				//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
-                tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
+			if(tempSubSelect.getSelectBody() instanceof SetOperationList)
+            {
+                SetOperationList setOperationList = (SetOperationList) tempSubSelect.getSelectBody();
+            
+                List<SetOperation> temp = setOperationList.getOperations();
+
+				boolean union = false;
+
+				for(SetOperation op : temp){
+					if(op instanceof UnionOp){
+						union = true;
+					}else{
+						union = false;
+						break;
+					}
+				}
+
+				if(union){
+					PlainSelect newUnion = UnionProvenance(setOperationList);
+					tempSubSelect.setSelectBody(newUnion);
+				}
 			}else{
-				//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
-                tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
-                //this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
-                //tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect, unionId));
-            }
-            //[ ] confirmar: todos os subselects têm alias?
-            provToken = tempSubSelect.getAlias().getName()+".prov";
+				PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
+				
+				//SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
+
+				if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
+					//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
+					//tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect, unionId));
+					//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+					tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
+				}else{
+					//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+					tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
+					//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
+					//tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect, unionId));
+				}
+				//[ ] confirmar: todos os subselects têm alias?
+				
+			}
+			provToken = tempSubSelect.getAlias().getName()+".prov";
         }
 
         List<Join> joins = plainSelect.getJoins();
@@ -349,10 +376,10 @@ public class Parser {
 		if(funcVisitor.hasFunction()) aggFunction = funcVisitor.getAggExpression();
 
 		String provenance ="'(' || "+provToken+" || ')' " + aggFunction;
-
+		String _column = "";	
         if(plainSelect.getGroupBy() != null || projectionOnlyFunc(plainSelect.getSelectItems())){
 			SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
-			String _column = "";
+			
 			
 			if (firstSelectItem instanceof SelectExpressionItem) {
 				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) firstSelectItem;
@@ -366,6 +393,36 @@ public class Parser {
 			String _listagg = getListAgg(provenance, '+', _column);
 			newColumn.setExpression(new net.sf.jsqlparser.schema.Column(_listagg+ " as prov"));
         	plainSelect.addSelectItems(newColumn);
+            return plainSelect;
+		}else if(plainSelect.getDistinct() != null){
+			int countCol = 0;
+			for (SelectItem selectItem : plainSelect.getSelectItems()) {
+				if(countCol == 0)
+				{
+					if (selectItem instanceof SelectExpressionItem) {
+						SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItem;
+						if(selectExpressionItem.getExpression() instanceof Column){
+							Column column = (Column) selectExpressionItem.getExpression();
+							_column = column.getFullyQualifiedName();			
+						}else if(selectExpressionItem.getExpression() instanceof Function){
+							_column = "1";
+						}
+					}
+				}
+
+				if (selectItem instanceof SelectExpressionItem) {
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItem;
+					Column column = (Column) selectExpressionItem.getExpression();
+					plainSelect.addGroupByColumnReference(column);
+				}            
+			}
+
+			String listagg = getListAgg(provenance, '+', _column);
+			newColumn.setExpression(new net.sf.jsqlparser.schema.Column(listagg + " as prov"));
+        	plainSelect.addSelectItems(newColumn);
+
+			plainSelect.setDistinct(null);
+
             return plainSelect;
         }else{
 			newColumn.setExpression(new net.sf.jsqlparser.schema.Column(provenance + " as prov"));
@@ -404,7 +461,7 @@ public class Parser {
 
 					Column firstColumn = (Column) ((SelectExpressionItem) plainSelect.getSelectItems().get(0)).getExpression();
 					String listAgg = getListAgg("prov", '+', unionID+"."+firstColumn.getColumnName());
-					selectItems.add(new SelectExpressionItem(new Column(listAgg)));
+					selectItems.add(new SelectExpressionItem(new Column(listAgg+ " as prov")));
 				}
 
 				//UnionWhereColumns(plainSelect, index == 0 ? true : false,"", unionID);
@@ -529,14 +586,12 @@ public class Parser {
 					}
 				}
 				String _listagg = getListAgg(provenance, '+', _column);
-				newColumn.setExpression(new net.sf.jsqlparser.schema.Column("'(' ||"+_listagg+ "|| ')' as prov"));
+				newColumn.setExpression(new Column("'(' ||"+_listagg+ "|| ')' as prov"));
 				plainSelect.addSelectItems(newColumn);
 			}else{
 				SelectExpressionItem newColumn = new SelectExpressionItem();
-				
-				Column prov = new Column("prov");
-				prov.setTable(tempTable);
-				newColumn.setExpression(prov);
+				String prov = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + tempTable.getFullyQualifiedName() + ".prov as prov";
+				newColumn.setExpression(new Column(prov));
 				plainSelect.addSelectItems(newColumn);
 			}
 		}else if(plainSelect.getFromItem() instanceof SubSelect){
@@ -1161,8 +1216,12 @@ public class Parser {
      * @return a String with the SQL Standard function 'ListAGG'
      */
     private String getListAgg(String expression, char separator, String orderByColumn){
-        //return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
-		return String.format("STRING_AGG(%s, ' %c ' ORDER BY %s)", expression, separator, orderByColumn);
+		if(dbname.toLowerCase().compareTo("trino") == 0)
+        	return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
+		else if(dbname.toLowerCase().compareTo("postgres") == 0)
+			return String.format("STRING_AGG(%s, ' %c ' ORDER BY %s)", expression, separator, orderByColumn);
+		
+		return "";
     }
 
 	private List<Table> extractJoinTables(PlainSelect plainSelect ) {

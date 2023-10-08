@@ -11,6 +11,7 @@ public class PostgresHelper {
 	 * conn is the private variable where it will be instanced the Postgresql's connection
 	 */
 	private Connection conn = null;
+	private String postgresURL = "";
 	
 	/**
 	 * Class constructor where it is initialised the connection with Trino (conn variable)
@@ -27,6 +28,17 @@ public class PostgresHelper {
 		}
     }
 
+	public PostgresHelper(String databaseURL) throws Exception{
+		postgresURL = databaseURL;
+
+		if(!this.setConnection()) {
+			throw new Exception("The connection variable has not been initialised");
+		}
+		else if (!this.TestConnection()) {
+			throw new Exception("Trino is not initialised");
+		}
+	}
+
 	/**
 	 * Creates the connection with Trino and returns true if the connection is obtained
 	 * or false if not.
@@ -42,8 +54,7 @@ public class PostgresHelper {
 		 try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager
-			   .getConnection("jdbc:postgresql://localhost:5432/tpchprov?options=-c%20search_path=public,provsql"
-			   ,
+			   .getConnection("jdbc:postgresql://"+postgresURL,
 			   "postgres", "postgres");
 		 } catch (Exception e) {
 			e.printStackTrace();

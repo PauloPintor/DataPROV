@@ -24,6 +24,7 @@ public class TrinoHelper {
 	 * conn is the private variable where it will be instanced the Trino's connection
 	 */
 	private Connection conn = null;
+	private String trinoURL = "";
 	
 	/**
 	 * Class constructor where it is initialised the connection with Trino (conn variable)
@@ -40,6 +41,17 @@ public class TrinoHelper {
 		}
     }
 	
+	public TrinoHelper(String databaseURL) throws Exception
+	{
+		trinoURL = databaseURL;
+		if(!this.setConnection()) {
+			throw new Exception("The connection variable has not been initialised");
+		}
+		else if (!this.TestConnection()) {
+			throw new Exception("Trino is not initialised");
+		}
+	}
+
 	/**
 	 * Creates the connection with Trino and returns true if the connection is obtained
 	 * or false if not.
@@ -59,7 +71,7 @@ public class TrinoHelper {
 		 properties.setProperty("password", config.getPropertieValue("trino.password"));
 		 properties.setProperty("SSL", config.getPropertieValue("trino.ssl"));
 		 
-		 conn = DriverManager.getConnection(config.getPropertieValue("trino.url"), properties);
+		 conn = DriverManager.getConnection(trinoURL, properties);
 
 		 return conn != null;
 	}
@@ -129,7 +141,7 @@ public class TrinoHelper {
 		if (conn == null) throw new Exception("The connection variable has not been initialised");
 
 		Statement statement = conn.createStatement();
-
+	
 		ResultSet result = statement.executeQuery(query);
 
 		return result;

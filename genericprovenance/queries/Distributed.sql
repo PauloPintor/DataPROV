@@ -111,3 +111,149 @@ select t10.public.supplier.s_name, t10.public.supplier.s_address, t10.public.sup
 
 -- 100MB
 select t100.public.supplier.s_name, t100.public.supplier.s_address, t100.public.supplier.s_suppkey from t100.public.supplier, t100.public.nation where t100.public.supplier.s_suppkey in ( select ca.tpch_100.partsupp.ps_suppkey from ca.tpch_100.partsupp where ca.tpch_100.partsupp.ps_partkey in ( select ca.tpch_100.part.p_partkey from ca.tpch_100.part where ca.tpch_100.part.p_name like 'forest%' ) and ca.tpch_100.partsupp.ps_availqty > ( select 0.5 * sum(t100.public.lineitem.l_quantity) from t100.public.lineitem where t100.public.lineitem.l_partkey = ca.tpch_100.partsupp.ps_partkey and t100.public.lineitem.l_suppkey = ca.tpch_100.partsupp.ps_suppkey and t100.public.lineitem.l_shipdate >= date '1994-01-01' and t100.public.lineitem.l_shipdate < date '1994-01-01' + interval '1' year ) ) and t100.public.supplier.s_nationkey = t100.public.nation.n_nationkey and t100.public.nation.n_name = 'CANADA' order by t100.public.supplier.s_name
+
+-- SSB
+-- QUERY 1.1
+-- 1MB
+select sum(ca.ssb_1.lineorder.lo_extendedprice * ca.ssb_1.lineorder.lo_discount) as revenue from ca.ssb_1.lineorder, s1.public.date where ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and s1.public.date.d_year = 1993 and ca.ssb_1.lineorder.lo_discount between 1 and 3 and ca.ssb_1.lineorder.lo_quantity < 25
+
+-- 10MB
+select sum(ca.ssb_10.lineorder.lo_extendedprice * ca.ssb_10.lineorder.lo_discount) as revenue from ca.ssb_10.lineorder, s10.public.date where ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and s10.public.date.d_year = 1993 and ca.ssb_10.lineorder.lo_discount between 1 and 3 and ca.ssb_10.lineorder.lo_quantity < 25
+
+-- 100MB
+select sum(ca.ssb_100.lineorder.lo_extendedprice * ca.ssb_100.lineorder.lo_discount) as revenue from ca.ssb_100.lineorder, s100.public.date where ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and s100.public.date.d_year = 1993 and ca.ssb_100.lineorder.lo_discount between 1 and 3 and ca.ssb_100.lineorder.lo_quantity < 25
+
+-- QUERY 1.2
+-- 1MB
+select sum(ca.ssb_1.lineorder.lo_extendedprice * ca.ssb_1.lineorder.lo_discount) as revenue from ca.ssb_1.lineorder, s1.public.date where ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and s1.public.date.d_yearmonthnum = 199401 and ca.ssb_1.lineorder.lo_discount between 4 and 6 and ca.ssb_1.lineorder.lo_quantity between 26 and 35
+
+-- 10MB
+select sum(ca.ssb_10.lineorder.lo_extendedprice * ca.ssb_10.lineorder.lo_discount) as revenue from ca.ssb_10.lineorder, s10.public.date where ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and s10.public.date.d_yearmonthnum = 199401 and ca.ssb_10.lineorder.lo_discount between 4 and 6 and ca.ssb_10.lineorder.lo_quantity between 26 and 35
+
+-- 100MB
+select sum(ca.ssb_100.lineorder.lo_extendedprice * ca.ssb_100.lineorder.lo_discount) as revenue from ca.ssb_100.lineorder, s100.public.date where ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and s100.public.date.d_yearmonthnum = 199401 and ca.ssb_100.lineorder.lo_discount between 4 and 6 and ca.ssb_100.lineorder.lo_quantity between 26 and 35
+
+-- QUERY 1.3
+-- 1MB
+select sum(ca.ssb_1.lineorder.lo_extendedprice * ca.ssb_1.lineorder.lo_discount) as revenue from ca.ssb_1.lineorder, s1.public.date where ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and s1.public.date.d_weeknuminyear = 10 and s1.public.date.d_year = 1992 and ca.ssb_1.lineorder.lo_discount between 5 and 7 and ca.ssb_1.lineorder.lo_quantity between 26 and 35
+
+-- 10MB
+select sum(ca.ssb_10.lineorder.lo_extendedprice * ca.ssb_10.lineorder.lo_discount) as revenue from ca.ssb_10.lineorder, s10.public.date where ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and s10.public.date.d_weeknuminyear = 6 and s10.public.date.d_year = 1994 and ca.ssb_10.lineorder.lo_discount between 5 and 7 and ca.ssb_10.lineorder.lo_quantity between 25 and 38
+
+-- 100MB
+select sum(ca.ssb_100.lineorder.lo_extendedprice * ca.ssb_100.lineorder.lo_discount) as revenue from ca.ssb_100.lineorder, s100.public.date where ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and s100.public.date.d_weeknuminyear = 6 and s100.public.date.d_year = 1994 and ca.ssb_100.lineorder.lo_discount between 5 and 7 and ca.ssb_100.lineorder.lo_quantity between 26 and 35
+
+-- QUERY 2.1
+-- 1MB
+select sum(ca.ssb_1.lineorder.lo_revenue), s1.public.date.d_year, s1.public.part.p_brand1 from ca.ssb_1.lineorder, s1.public.date, s1.public.part, s1.public.supplier where ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and ca.ssb_1.lineorder.lo_partkey = s1.public.part.p_partkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and s1.public.part.p_category = 'MFGR#12' and s1.public.supplier.s_region = 'AMERICA' group by s1.public.date.d_year, s1.public.part.p_brand1 order by s1.public.date.d_year, s1.public.part.p_brand1
+
+-- 10MB
+select sum(ca.ssb_10.lineorder.lo_revenue), s10.public.date.d_year, s10.public.part.p_brand1 from ca.ssb_10.lineorder, s10.public.date, s10.public.part, s10.public.supplier where ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and ca.ssb_10.lineorder.lo_partkey = s10.public.part.p_partkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and s10.public.part.p_category = 'MFGR#12' and s10.public.supplier.s_region = 'AMERICA' group by s10.public.date.d_year, s10.public.part.p_brand1 order by s10.public.date.d_year, s10.public.part.p_brand1
+
+
+-- 100MB
+select sum(ca.ssb_100.lineorder.lo_revenue), s100.public.date.d_year, s100.public.part.p_brand1 from ca.ssb_100.lineorder, s100.public.date, s100.public.part, s100.public.supplier where ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and ca.ssb_100.lineorder.lo_partkey = s100.public.part.p_partkey and ca.ssb_100.lineorder.lo_suppkey =  s100.public.supplier.s_suppkey and s100.public.part.p_category = 'MFGR#12' and  s100.public.supplier.s_region = 'AMERICA' group by s100.public.date.d_year, s100.public.part.p_brand1 order by s100.public.date.d_year, s100.public.part.p_brand1
+
+
+-- QUERY 2.2
+-- 1MB
+select sum(ca.ssb_1.lineorder.lo_revenue), s1.public.date.d_year, s1.public.part.p_brand1 from ca.ssb_1.lineorder, s1.public.date, s1.public.part, s1.public.supplier where ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and ca.ssb_1.lineorder.lo_partkey = s1.public.part.p_partkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and s1.public.part.p_brand1 between 'MFGR#2221' and 'MFGR#2228' and s1.public.supplier.s_region = 'ASIA' group by s1.public.date.d_year, s1.public.part.p_brand1 order by s1.public.date.d_year, s1.public.part.p_brand1
+
+-- 10MB
+select sum(ca.ssb_10.lineorder.lo_revenue), s10.public.date.d_year, s10.public.part.p_brand1 from ca.ssb_10.lineorder, s10.public.date, s10.public.part, s10.public.supplier where ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and ca.ssb_10.lineorder.lo_partkey = s10.public.part.p_partkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and s10.public.part.p_brand1 between 'MFGR#2221' and 'MFGR#2228' and s10.public.supplier.s_region = 'ASIA' group by s10.public.date.d_year, s10.public.part.p_brand1 order by s10.public.date.d_year, s10.public.part.p_brand1
+
+-- 100MB
+select sum(ca.ssb_100.lineorder.lo_revenue), s100.public.date.d_year, s100.public.part.p_brand1 from ca.ssb_100.lineorder, s100.public.date, s100.public.part, s100.public.supplier where ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and ca.ssb_100.lineorder.lo_partkey = s100.public.part.p_partkey and ca.ssb_100.lineorder.lo_suppkey =  s100.public.supplier.s_suppkey and s100.public.part.p_brand1 between 'MFGR#2221' and 'MFGR#2228' and  s100.public.supplier.s_region = 'ASIA' group by s100.public.date.d_year, s100.public.part.p_brand1 order by s100.public.date.d_year, s100.public.part.p_brand1
+
+-- QUERY 2.3
+-- 1MB
+select sum(ca.ssb_1.lineorder.lo_revenue), s1.public.date.d_year, s1.public.part.p_brand1 from ca.ssb_1.lineorder, s1.public.date, s1.public.part, s1.public.supplier where ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and ca.ssb_1.lineorder.lo_partkey = s1.public.part.p_partkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and s1.public.part.p_brand1 = 'MFGR#2221' and s1.public.supplier.s_region = 'EUROPE' group by s1.public.date.d_year, s1.public.part.p_brand1,s1.public.supplier.s_region order by s1.public.date.d_year, s1.public.part.p_brand1
+
+-- 10MB
+select sum(ca.ssb_10.lineorder.lo_revenue), s10.public.date.d_year, s10.public.part.p_brand1 from ca.ssb_10.lineorder, s10.public.date, s10.public.part, s10.public.supplier where ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and ca.ssb_10.lineorder.lo_partkey = s10.public.part.p_partkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and s10.public.part.p_brand1 = 'MFGR#2221' and s10.public.supplier.s_region = 'EUROPE' group by s10.public.date.d_year, s10.public.part.p_brand1 order by s10.public.date.d_year, s10.public.part.p_brand1
+
+-- 100MB
+select sum(ca.ssb_100.lineorder.lo_revenue), s100.public.date.d_year, s100.public.part.p_brand1 from ca.ssb_100.lineorder, s100.public.date, s100.public.part, s100.public.supplier where ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and ca.ssb_100.lineorder.lo_partkey = s100.public.part.p_partkey and ca.ssb_100.lineorder.lo_suppkey =  s100.public.supplier.s_suppkey and s100.public.part.p_brand1 = 'MFGR#2221' and  s100.public.supplier.s_region = 'EUROPE' group by s100.public.date.d_year, s100.public.part.p_brand1 order by s100.public.date.d_year, s100.public.part.p_brand1
+
+-- QUERY 3.1
+-- 1MB
+select s1.public.customer.c_nation, s1.public.supplier.s_nation, s1.public.date.d_year, sum(ca.ssb_1.lineorder.lo_revenue) as revenue from s1.public.customer, ca.ssb_1.lineorder, s1.public.supplier, s1.public.date where ca.ssb_1.lineorder.lo_custkey = s1.public.customer.c_custkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and s1.public.customer.c_region = 'ASIA' and s1.public.supplier.s_region = 'ASIA' and s1.public.date.d_year >= 1992 and s1.public.date.d_year <= 1997 group by s1.public.customer.c_nation, s1.public.supplier.s_nation, s1.public.date.d_year order by s1.public.date.d_year asc, revenue desc
+
+-- 10MB
+select s10.public.customer.c_nation, s10.public.supplier.s_nation, s10.public.date.d_year, sum(ca.ssb_10.lineorder.lo_revenue) as revenue from s10.public.customer, ca.ssb_10.lineorder, s10.public.supplier, s10.public.date where ca.ssb_10.lineorder.lo_custkey = s10.public.customer.c_custkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and s10.public.customer.c_region = 'ASIA' and s10.public.supplier.s_region = 'ASIA' and s10.public.date.d_year >= 1992 and s10.public.date.d_year <= 1997 group by s10.public.customer.c_nation, s10.public.supplier.s_nation, s10.public.date.d_year order by s10.public.date.d_year asc, revenue desc
+
+-- 100MB
+select s100.public.customer.c_nation, s100.public.supplier.s_nation, s100.public.date.d_year, sum(ca.ssb_100.lineorder.lo_revenue) as revenue from s100.public.customer, ca.ssb_100.lineorder, s100.public.supplier, s100.public.date where ca.ssb_100.lineorder.lo_custkey = s100.public.customer.c_custkey and ca.ssb_100.lineorder.lo_suppkey = s100.public.supplier.s_suppkey and ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and s100.public.customer.c_region = 'ASIA' and s100.public.supplier.s_region = 'ASIA' and s100.public.date.d_year >= 1992 and s100.public.date.d_year <= 1997 group by s100.public.customer.c_nation, s100.public.supplier.s_nation, s100.public.date.d_year order by s100.public.date.d_year asc, revenue desc
+
+-- QUERY 3.2
+-- 1MB
+
+select s1.public.customer.c_city, s1.public.supplier.s_city, s1.public.date.d_year, sum(ca.ssb_1.lineorder.lo_revenue) as revenue from s1.public.customer, ca.ssb_1.lineorder, s1.public.supplier, s1.public.date where ca.ssb_1.lineorder.lo_custkey = s1.public.customer.c_custkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and s1.public.customer.c_nation = 'UNITED STATES' and s1.public.supplier.s_nation = 'UNITED STATES' and s1.public.date.d_year >= 1992 and s1.public.date.d_year <= 1997 group by s1.public.customer.c_city, s1.public.supplier.s_city, s1.public.date.d_year order by s1.public.date.d_year asc, revenue desc
+
+-- 10MB
+select s10.public.customer.c_city, s10.public.supplier.s_city, s10.public.date.d_year, sum(ca.ssb_10.lineorder.lo_revenue) as revenue from s10.public.customer, ca.ssb_10.lineorder, s10.public.supplier, s10.public.date where ca.ssb_10.lineorder.lo_custkey = s10.public.customer.c_custkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and s10.public.customer.c_nation = 'UNITED STATES' and s10.public.supplier.s_nation = 'UNITED STATES' and s10.public.date.d_year >= 1992 and s10.public.date.d_year <= 1997 group by s10.public.customer.c_city, s10.public.supplier.s_city, s10.public.date.d_year order by s10.public.date.d_year asc, revenue desc
+
+-- 100MB
+select s100.public.customer.c_city, s100.public.supplier.s_city, s100.public.date.d_year, sum(ca.ssb_100.lineorder.lo_revenue) as revenue from s100.public.customer, ca.ssb_100.lineorder, s100.public.supplier, s100.public.date where ca.ssb_100.lineorder.lo_custkey = s100.public.customer.c_custkey and ca.ssb_100.lineorder.lo_suppkey = s100.public.supplier.s_suppkey and ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and s100.public.customer.c_nation = 'UNITED STATES' and s100.public.supplier.s_nation = 'UNITED STATES' and s100.public.date.d_year >= 1992 and s100.public.date.d_year <= 1997 group by s100.public.customer.c_nation, s100.public.supplier.s_nation, s100.public.date.d_year order by s100.public.date.d_year asc, revenue desc
+
+-- QUERY 3.3
+-- 1MB
+select s1.public.customer.c_city, s1.public.supplier.s_city, s1.public.date.d_year, sum(ca.ssb_1.lineorder.lo_revenue) as revenue from s1.public.customer, ca.ssb_1.lineorder, s1.public.supplier, s1.public.date where ca.ssb_1.lineorder.lo_custkey = s1.public.customer.c_custkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and (s1.public.customer.c_city = 'UNITED KI1' or s1.public.customer.c_city = 'UNITED KI5') and (s1.public.supplier.s_city = 'UNITED KI1' or s1.public.supplier.s_city = 'UNITED KI5') and s1.public.date.d_year >= 1992 and s1.public.date.d_year <= 1997 group by s1.public.customer.c_city, s1.public.supplier.s_city, s1.public.date.d_year order by s1.public.date.d_year asc, revenue desc
+
+-- 10MB
+select s10.public.customer.c_city, s10.public.supplier.s_city, s10.public.date.d_year, sum(ca.ssb_10.lineorder.lo_revenue) as revenue from s10.public.customer, ca.ssb_10.lineorder, s10.public.supplier, s10.public.date where ca.ssb_10.lineorder.lo_custkey = s10.public.customer.c_custkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and (s10.public.customer.c_city = 'UNITED KI1' or s10.public.customer.c_city = 'UNITED KI5') and (s10.public.supplier.s_city = 'UNITED KI1' or s10.public.supplier.s_city = 'UNITED KI5') and s10.public.date.d_year >= 1992 and s10.public.date.d_year <= 1997 group by s10.public.customer.c_city, s10.public.supplier.s_city, s10.public.date.d_year order by s10.public.date.d_year asc, revenue desc
+
+-- 100MB
+select s100.public.customer.c_city, s100.public.supplier.s_city, s100.public.date.d_year, sum(ca.ssb_100.lineorder.lo_revenue) as revenue from s100.public.customer, ca.ssb_100.lineorder, s100.public.supplier, s100.public.date where ca.ssb_100.lineorder.lo_custkey = s100.public.customer.c_custkey and ca.ssb_100.lineorder.lo_suppkey = s100.public.supplier.s_suppkey and ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and (s100.public.customer.c_city = 'UNITED KI1' or s100.public.customer.c_city = 'UNITED KI5') and (s100.public.supplier.s_city = 'UNITED KI1' or s100.public.supplier.s_city = 'UNITED KI5') and s100.public.date.d_year >= 1992 and s100.public.date.d_year <= 1997 group by s100.public.customer.c_nation, s100.public.supplier.s_nation, s100.public.date.d_year order by s100.public.date.d_year asc, revenue desc
+
+-- QUERY 3.4
+-- 1MB
+select s1.public.customer.c_city, s1.public.supplier.s_nation, s1.public.date.d_year, sum(ca.ssb_1.lineorder.lo_revenue) as revenue from s1.public.customer, ca.ssb_1.lineorder, s1.public.supplier, s1.public.date where ca.ssb_1.lineorder.lo_custkey = s1.public.customer.c_custkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and (s1.public.customer.c_city = 'UNITED KI1' or s1.public.customer.c_city = 'UNITED KI5') and (s1.public.customer.c_city = 'UNITED KI1' or s1.public.customer.c_city = 'UNITED KI5') and s1.public.date.d_yearmonth = 'Dec1997' group by s1.public.customer.c_nation, s1.public.supplier.s_nation, s1.public.date.d_year order by s1.public.date.d_year asc, revenue desc
+
+-- 10MB
+select s10.public.customer.c_city, s10.public.supplier.s_city, s10.public.date.d_year, sum(ca.ssb_10.lineorder.lo_revenue) as revenue from s10.public.customer, ca.ssb_10.lineorder, s10.public.supplier, s10.public.date where ca.ssb_10.lineorder.lo_custkey = s10.public.customer.c_custkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and (s10.public.customer.c_city = 'UNITED KI1' or s10.public.customer.c_city = 'UNITED KI5') and (s10.public.supplier.s_city = 'UNITED KI1' or s10.public.supplier.s_city = 'UNITED KI5') and s10.public.date.d_yearmonth = 'Dec1997' group by s10.public.customer.c_city, s10.public.supplier.s_city, s10.public.date.d_year order by s10.public.date.d_year asc, revenue desc
+
+-- 100MB
+select s100.public.customer.c_city, s100.public.supplier.s_city, s100.public.date.d_yearmonth, s100.public.date.d_year, sum(ca.ssb_100.lineorder.lo_revenue) as revenue from s100.public.customer, ca.ssb_100.lineorder, s100.public.supplier, s100.public.date where ca.ssb_100.lineorder.lo_custkey = s100.public.customer.c_custkey and ca.ssb_100.lineorder.lo_suppkey = s100.public.supplier.s_suppkey and ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and (s100.public.customer.c_city = 'UNITED KI1' or s100.public.customer.c_city = 'UNITED KI5') and (s100.public.supplier.s_city = 'UNITED KI1' or s100.public.supplier.s_city = 'UNITED KI5') and s100.public.date.d_yearmonth = 'Dec1997' group by s100.public.customer.c_city, s100.public.supplier.s_city, s100.public.date.d_yearmonth, s100.public.date.d_year order by s100.public.date.d_year asc, revenue desc;
+
+-- QUERY 4.1
+
+-- 1MB
+select s1.public.date.d_year, s1.public.customer.c_nation, sum(ca.ssb_1.lineorder.lo_revenue - ca.ssb_1.lineorder.lo_supplycost) as profit from s1.public.date, s1.public.customer, s1.public.supplier, s1.public.part, ca.ssb_1.lineorder where ca.ssb_1.lineorder.lo_custkey = s1.public.customer.c_custkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and ca.ssb_1.lineorder.lo_partkey = s1.public.part.p_partkey and ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and s1.public.customer.c_region = 'AMERICA' and s1.public.supplier.s_region = 'AMERICA' and (s1.public.part.p_mfgr = 'MFGR#1' or s1.public.part.p_mfgr = 'MFGR#2') group by s1.public.date.d_year, s1.public.customer.c_nation order by s1.public.date.d_year, s1.public.customer.c_nation
+
+-- 10MB
+select s10.public.date.d_year, s10.public.customer.c_nation, sum(ca.ssb_10.lineorder.lo_revenue - ca.ssb_10.lineorder.lo_supplycost) as profit from s10.public.date, s10.public.customer, s10.public.supplier, s10.public.part, ca.ssb_10.lineorder where ca.ssb_10.lineorder.lo_custkey = s10.public.customer.c_custkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and ca.ssb_10.lineorder.lo_partkey = s10.public.part.p_partkey and ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and s10.public.customer.c_region = 'AMERICA' and s10.public.supplier.s_region = 'AMERICA' and (s10.public.part.p_mfgr = 'MFGR#1' or s10.public.part.p_mfgr = 'MFGR#2') group by s10.public.date.d_year, s10.public.customer.c_nation order by s10.public.date.d_year, s10.public.customer.c_nation
+
+-- 100MB
+select s100.public.date.d_year, s100.public.customer.c_nation, sum(ca.ssb_100.lineorder.lo_revenue - ca.ssb_100.lineorder.lo_supplycost) as profit from s100.public.date, s100.public.customer, s100.public.supplier, s100.public.part, ca.ssb_100.lineorder where ca.ssb_100.lineorder.lo_custkey = s100.public.customer.c_custkey and ca.ssb_100.lineorder.lo_suppkey = s100.public.supplier.s_suppkey and ca.ssb_100.lineorder.lo_partkey = s100.public.part.p_partkey and ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and s100.public.customer.c_region = 'AMERICA' and s100.public.supplier.s_region = 'AMERICA' and (s100.public.part.p_mfgr = 'MFGR#1' or s100.public.part.p_mfgr = 'MFGR#2') group by s100.public.date.d_year, s100.public.customer.c_nation order by s100.public.date.d_year, s100.public.customer.c_nation
+
+-- QUERY 4.2
+-- 1MB
+select s1.public.date.d_year, s1.public.customer.c_nation, sum(ca.ssb_1.lineorder.lo_revenue - ca.ssb_1.lineorder.lo_supplycost) as profit from s1.public.date, s1.public.customer, s1.public.supplier, s1.public.part, ca.ssb_1.lineorder where ca.ssb_1.lineorder.lo_custkey = s1.public.customer.c_custkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and ca.ssb_1.lineorder.lo_partkey = s1.public.part.p_partkey and ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and s1.public.customer.c_region = 'AMERICA' and s1.public.supplier.s_region = 'AMERICA' and (s1.public.date.d_year = 1997 or s1.public.date.d_year = 1998) and (s1.public.part.p_mfgr = 'MFGR#1' or s1.public.part.p_mfgr = 'MFGR#2') group by s1.public.date.d_year, s1.public.customer.c_nation order by s1.public.date.d_year, s1.public.customer.c_nation
+
+-- 10MB
+select s10.public.date.d_year, s10.public.customer.c_nation, sum(ca.ssb_10.lineorder.lo_revenue - ca.ssb_10.lineorder.lo_supplycost) as profit from s10.public.date, s10.public.customer, s10.public.supplier, s10.public.part, ca.ssb_10.lineorder where ca.ssb_10.lineorder.lo_custkey = s10.public.customer.c_custkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and ca.ssb_10.lineorder.lo_partkey = s10.public.part.p_partkey and ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and s10.public.customer.c_region = 'AMERICA' and s10.public.supplier.s_region = 'AMERICA' and (s10.public.date.d_year = 1997 or s10.public.date.d_year = 1998) and (s10.public.part.p_mfgr = 'MFGR#1' or s10.public.part.p_mfgr = 'MFGR#2') group by s10.public.date.d_year, s10.public.customer.c_nation order by s10.public.date.d_year, s10.public.customer.c_nation
+
+-- 100MB
+select s100.public.date.d_year, s100.public.customer.c_nation, sum(ca.ssb_100.lineorder.lo_revenue - ca.ssb_100.lineorder.lo_supplycost) as profit from s100.public.date, s100.public.customer, s100.public.supplier, s100.public.part, ca.ssb_100.lineorder where ca.ssb_100.lineorder.lo_custkey = s100.public.customer.c_custkey and ca.ssb_100.lineorder.lo_suppkey = s100.public.supplier.s_suppkey and ca.ssb_100.lineorder.lo_partkey = s100.public.part.p_partkey and ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and s100.public.customer.c_region = 'AMERICA' and s100.public.supplier.s_region = 'AMERICA' and (s100.public.date.d_year = 1997 or s100.public.date.d_year = 1998) and (s100.public.part.p_mfgr = 'MFGR#1' or s100.public.part.p_mfgr = 'MFGR#2') group by s100.public.date.d_year, s100.public.customer.c_nation order by s100.public.date.d_year, s100.public.customer.c_nation
+
+-- QUERY 4.3
+-- 1MB
+select s1.public.date.d_year, s1.public.customer.c_nation, sum(ca.ssb_1.lineorder.lo_revenue - ca.ssb_1.lineorder.lo_supplycost) as profit from s1.public.date, s1.public.customer, s1.public.supplier, s1.public.part, ca.ssb_1.lineorder where ca.ssb_1.lineorder.lo_custkey = s1.public.customer.c_custkey and ca.ssb_1.lineorder.lo_suppkey = s1.public.supplier.s_suppkey and ca.ssb_1.lineorder.lo_partkey = s1.public.part.p_partkey and ca.ssb_1.lineorder.lo_orderdate = s1.public.date.d_datekey and s1.public.customer.c_region = 'AMERICA' and s1.public.supplier.s_nation = 'UNITED STATES' and (s1.public.date.d_year = 1997 or s1.public.date.d_year = 1998) and s1.public.part.p_mfgr = 'MFGR#4' group by s1.public.date.d_year, s1.public.customer.c_nation order by s1.public.date.d_year, s1.public.customer.c_nation
+
+-- 10MB
+select s10.public.date.d_year, s10.public.customer.c_nation, sum(ca.ssb_10.lineorder.lo_revenue - ca.ssb_10.lineorder.lo_supplycost) as profit from s10.public.date, s10.public.customer, s10.public.supplier, s10.public.part, ca.ssb_10.lineorder where ca.ssb_10.lineorder.lo_custkey = s10.public.customer.c_custkey and ca.ssb_10.lineorder.lo_suppkey = s10.public.supplier.s_suppkey and ca.ssb_10.lineorder.lo_partkey = s10.public.part.p_partkey and ca.ssb_10.lineorder.lo_orderdate = s10.public.date.d_datekey and s10.public.customer.c_region = 'AMERICA' and s10.public.supplier.s_nation = 'UNITED STATES' and (s10.public.date.d_year = 1997 or s10.public.date.d_year = 1998) and s10.public.part.p_mfgr = 'MFGR#4' group by s10.public.date.d_year, s10.public.customer.c_nation order by s10.public.date.d_year, s10.public.customer.c_nation
+
+-- 100MB
+select s100.public.date.d_year, s100.public.customer.c_nation, sum(ca.ssb_100.lineorder.lo_revenue - ca.ssb_100.lineorder.lo_supplycost) as profit from s100.public.date, s100.public.customer, s100.public.supplier, s100.public.part, ca.ssb_100.lineorder where ca.ssb_100.lineorder.lo_custkey = s100.public.customer.c_custkey and ca.ssb_100.lineorder.lo_suppkey = s100.public.supplier.s_suppkey and ca.ssb_100.lineorder.lo_partkey = s100.public.part.p_partkey and ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and s100.public.customer.c_region = 'AMERICA' and s100.public.supplier.s_nation = 'UNITED STATES' and (s100.public.date.d_year = 1997 or s100.public.date.d_year = 1998) and s100.public.part.p_mfgr = 'MFGR#4' group by s100.public.date.d_year, s100.public.customer.c_nation order by s100.public.date.d_year, s100.public.customer.c_nation
+
+
+
+SELECT AB.a
+FROM (
+	SELECT a, b
+	FROM R
+	UNION
+	SELECT c, d
+	FROM S
+) AS AB

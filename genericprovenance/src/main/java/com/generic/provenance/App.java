@@ -19,26 +19,50 @@ public class App
     public static void main( String[] args )
     {
 
+		
+		boolean withProv = false;
+		String database = "postgres";
+		String databaseURL = "localhost:5432/tpch_10";
+		//String databaseURL = "localhost:5432/ssb_p?options=-c%20search_path=public,provsql";
+		//String databaseURL = "jdbc:trino://localhost:8080";
+		//String sql = "SELECT * FROM (SELECT A FROM X UNION SELECT B FROM Y) UNION SELECT C FROM A";
+		//String sql = "Select TabB.coly from TabB where TabB.coly IN (select teste from tabA where tabA.cola = TabB.colB)";
+		String sql = "select customer.c_name, customer.c_custkey, orders.o_orderkey, orders.o_orderdate, orders.o_totalprice, sum(lineitem.l_quantity) from customer, orders, lineitem where orders.o_orderkey in (select lineitem.l_orderkey from lineitem group by lineitem.l_orderkey having sum(lineitem.l_quantity) > 215) and customer.c_custkey = orders.o_custkey and orders.o_orderkey = lineitem.l_orderkey group by customer.c_name, customer.c_custkey, orders.o_orderkey, orders.o_orderdate, orders.o_totalprice order by orders.o_totalprice desc, orders.o_orderdate LIMIT 100;";
 
-		String sql = "\t\tselect d_year, p_brand1 from lineorder, date_dim, part, supplier where lo_orderdate = d_datekey and lo_partkey = p_partkey and lo_suppkey = s_suppkey and p_category = 'MFGR#12' and s_region = 'AMERICA' group by d_year, p_brand1 order by d_year, p_brand1";
-
+		sql = "select supplier.s_name, supplier.s_address from supplier, nation where supplier.s_suppkey in ( select partsupp.ps_suppkey from partsupp where partsupp.ps_partkey in ( select part.p_partkey from part where part.p_name like 'white%' ) and partsupp.ps_availqty > ( select 0.5 * sum(lineitem.l_quantity) from lineitem where lineitem.l_partkey = partsupp.ps_partkey and lineitem.l_suppkey = partsupp.ps_suppkey and lineitem.l_shipdate >= date '1994-01-01' and lineitem.l_shipdate < date '1994-01-01' + interval '1' year ) ) and supplier.s_nationkey = nation.n_nationkey and nation.n_name = 'INDIA' order by supplier.s_name";
+		
         try {
-			long start = System.currentTimeMillis();
+			TrinoHelper th = null;
+			PostgresHelper ph = null;
 			
-			Parser parser = new Parser();
-			sql = parser.parseQuery(sql);
-
-			System.out.println(sql);
-
-			long annotations = System.currentTimeMillis();
-			TrinoHelper th = new TrinoHelper();
-			//PostgresHelper ph = new PostgresHelper();
-            //ResultSet result = ph.ExecuteQuery(sql);
-			ResultSet result = th.ExecuteQuery(sql);
-			long query = System.currentTimeMillis();
+			if(database.toLowerCase().compareTo("postgres") == 0)
+				ph = new PostgresHelper(databaseURL);
+			else if(database.toLowerCase().compareTo("trino") == 0)
+				th = new TrinoHelper(databaseURL);
 
 			ResultProcess rp = new ResultProcess();
-			rp.processing(result);
+
+			long start = System.currentTimeMillis();
+			
+			if(withProv) {
+ 				Parser parser = new Parser(database);
+				sql = parser.parseQuery(sql);
+				//System.out.println(sql);
+			}
+
+			long annotations = System.currentTimeMillis();
+			
+			ResultSet result = null;
+			if(database.toLowerCase().compareTo("postgres") == 0)
+				result = ph.ExecuteQuery(sql);
+			else if(database.toLowerCase().compareTo("trino") == 0)
+				result = th.ExecuteQuery(sql);
+
+			long query = System.currentTimeMillis();
+
+			if(withProv) {				
+				rp.processing(result);
+			}
 
 			long end = System.currentTimeMillis();
 			float annTime = (annotations - start) / 1000F;

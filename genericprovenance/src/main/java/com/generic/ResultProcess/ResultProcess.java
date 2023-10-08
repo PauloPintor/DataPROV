@@ -32,9 +32,12 @@ public class ResultProcess {
 		ResultSetMetaData rsmd = _result.getMetaData();
 		int columnsNumber = rsmd.getColumnCount();
 
+		//RETIRAR
+		int provLen = 0;
+		int provCount = 0;
 		while (_result.next()) {
 			LinkedHashMap<String, Object> row = new LinkedHashMap<>();
-
+			provCount++;
 			for (int i = 1; i <= columnsNumber; i++) {
 				
 				//System.out.print(rsmd.getColumnName(i) + " (" + rsmd.getColumnTypeName(i) + ") ");
@@ -42,6 +45,7 @@ public class ResultProcess {
 				{
 					//System.out.println(_result.getString(rsmd.getColumnName(i)));
 					String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("x","\u2297");
+					provLen += prov.length();
 					row.put("how", prov);
 					row.put("why", processWhy(prov));
 				}	
@@ -56,7 +60,7 @@ public class ResultProcess {
 
 			result.add(row);
 		}
-
+		System.out.println(provLen/provCount);
 	}
 
 	public List<LinkedHashMap<String, Object>> getResult() {
@@ -128,7 +132,7 @@ public class ResultProcess {
 
 		if(prov.indexOf(") .") != -1 || prov.indexOf(". (") != -1)
 		{
-			System.out.println("FAITES ATTENTION");
+
 			while (matcher.find()) {
 				String word = matcher.group();
 				if(!mapTokens.containsKey(word)){
