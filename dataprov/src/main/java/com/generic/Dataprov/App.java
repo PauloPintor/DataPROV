@@ -1,4 +1,4 @@
-package com.generic.provenance;
+package com.generic.Dataprov;
 
 import java.sql.ResultSet;
 import java.util.ArrayList;
