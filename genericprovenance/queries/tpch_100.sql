@@ -14,8 +14,6 @@ select lineitem.l_orderkey, sum(lineitem.l_extendedprice * (1 - lineitem.l_disco
 -- Q4
 select orders.o_orderpriority, count(*) as order_count from orders where orders.o_orderdate >= date '1993-07-01' and orders.o_orderdate < date '1993-07-01' + interval '3' month and exists ( select * from lineitem where lineitem.l_orderkey = orders.o_orderkey and lineitem.l_commitdate < lineitem.l_receiptdate ) group by orders.o_orderpriority order by orders.o_orderpriority
 
-
-
 -- Q5
 select nation.n_name, sum(lineitem.l_extendedprice * (1 - lineitem.l_discount)) as revenue from customer, orders, lineitem, supplier, nation, region where customer.c_custkey = orders.o_custkey and lineitem.l_orderkey = orders.o_orderkey and lineitem.l_suppkey = supplier.s_suppkey and customer.c_nationkey = supplier.s_nationkey and supplier.s_nationkey = nation.n_nationkey and nation.n_regionkey = region.r_regionkey and region.r_name = 'AMERICA' and orders.o_orderdate >= date '1996-01-01' and orders.o_orderdate < date '1996-01-01' + interval '1' year group by nation.n_name order by revenue desc
 
@@ -64,8 +62,8 @@ create view revenue0 (supplier_no, total_revenue) as select l_suppkey, sum(l_ext
 select supplier.s_suppkey, supplier.s_name, supplier.s_address, supplier.s_phone, revenue0.total_revenue from supplier, (select l_suppkey supplier_no, sum(l_extendedprice * (1 - l_discount)) total_revenue from lineitem where l_shipdate >= date '1996-03-01' and l_shipdate < date '1996-03-01' + interval '3' month group by l_suppkey) revenue0 where supplier.s_suppkey = revenue0.supplier_no and revenue0.total_revenue = ( select max(revenue0.total_revenue) from revenue0 ) order by supplier.s_suppkey;
 
 
--- Q16 not supported by the current version of the system
-select p_brand, p_type, p_size, count(distinct ps_suppkey) as supplier_cnt from partsupp, part where p_partkey = ps_partkey and p_brand <> 'Brand#13' and p_type not like 'ECONOMY PLATED%' and p_size in (11, 37, 24, 48, 21, 16, 20, 27) and ps_suppkey not in ( select s_suppkey from supplier where s_comment like '%Customer%Complaints%' ) group by p_brand, p_type, p_size order by supplier_cnt desc, p_brand, p_type, p_size;
+-- Q16
+select part.p_brand, part.p_type, part.p_size, count(distinct partsupp.ps_suppkey) as supplier_cnt from partsupp, part where part.p_partkey = partsupp.ps_partkey and part.p_brand <> 'Brand#13' and part.p_type not like 'ECONOMY PLATED%' and part.p_size in (11, 37, 24, 48, 21, 16, 20, 27) and partsupp.ps_suppkey not in ( select supplier.s_suppkey from supplier where supplier.s_comment like '%Customer%Complaints%' ) group by part.p_brand, part.p_type, part.p_size order by supplier_cnt desc, part.p_brand, part.p_type, part.p_size;
 
 -- Q17
 select sum(lineitem.l_extendedprice) / 7.0 as avg_yearly from lineitem, part where p_partkey = lineitem.l_partkey and part.p_brand = 'Brand#34' and part.p_container = 'LG CASE' and lineitem.l_quantity < ( select 0.2 * avg(lineitem.l_quantity) from lineitem.lineitem where lineitem.l_partkey = part.p_partkey );
@@ -82,8 +80,8 @@ select sum(lineitem.l_extendedprice* (1 - lineitem.l_discount)) as revenue from 
 select supplier.s_name, supplier.s_address from supplier, nation where supplier.s_suppkey in ( select partsupp.ps_suppkey from partsupp where partsupp.ps_partkey in ( select part.p_partkey from part where part.p_name like 'powder%' ) and partsupp.ps_availqty > ( select 0.5 * sum(lineitem.l_quantity) from lineitem where lineitem.l_partkey = partsupp.ps_partkey and lineitem.l_suppkey = partsupp.ps_suppkey and lineitem.l_shipdate >= date '1995-01-01' and lineitem.l_shipdate < date '1995-01-01' + interval '1' year ) ) and supplier.s_nationkey = nation.n_nationkey and nation.n_name = 'UNITED KINGDOM' order by supplier.s_name;
 
 
--- Q21 not supported by the current version of the system
-select s_name, count(*) as numwait from supplier, lineitem l1, orders, nation where s_suppkey = l1.l_suppkey and o_orderkey = l1.l_orderkey and o_orderstatus = 'F' and l1.l_receiptdate > l1.l_commitdate and exists ( select * from lineitem l2 where l2.l_orderkey = l1.l_orderkey and l2.l_suppkey <> l1.l_suppkey ) and not exists ( select * from lineitem l3 where l3.l_orderkey = l1.l_orderkey and l3.l_suppkey <> l1.l_suppkey and l3.l_receiptdate > l3.l_commitdate ) and s_nationkey = n_nationkey and n_name = 'IRAQ' group by s_name order by numwait desc, s_name LIMIT 100;
+-- Q21
+select supplier.s_name, count(*) as numwait from supplier, lineitem l1, orders, nation where supplier.s_suppkey = l1.l_suppkey and orders.o_orderkey = l1.l_orderkey and orders.o_orderstatus = 'F' and l1.l_receiptdate > l1.l_commitdate and exists ( select * from lineitem l2 where l2.l_orderkey = l1.l_orderkey and l2.l_suppkey <> l1.l_suppkey ) and not exists ( select * from lineitem l3 where l3.l_orderkey = l1.l_orderkey and l3.l_suppkey <> l1.l_suppkey and l3.l_receiptdate > l3.l_commitdate ) and supplier.s_nationkey = nation.n_nationkey and nation.n_name = 'IRAQ' group by supplier.s_name order by numwait desc, supplier.s_name LIMIT 100;
 
 
 

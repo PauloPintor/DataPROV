@@ -6,12 +6,15 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import net.sf.jsqlparser.expression.Alias;
+import net.sf.jsqlparser.expression.BinaryExpression;
 import net.sf.jsqlparser.expression.CaseExpression;
 import net.sf.jsqlparser.expression.DoubleValue;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.ExpressionVisitorAdapter;
 import net.sf.jsqlparser.expression.Function;
 import net.sf.jsqlparser.expression.LongValue;
+import net.sf.jsqlparser.expression.NotExpression;
+import net.sf.jsqlparser.expression.NullValue;
 import net.sf.jsqlparser.expression.operators.arithmetic.Addition;
 import net.sf.jsqlparser.expression.operators.arithmetic.Multiplication;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
@@ -23,6 +26,7 @@ import net.sf.jsqlparser.expression.operators.relational.GreaterThan;
 import net.sf.jsqlparser.expression.operators.relational.InExpression;
 import net.sf.jsqlparser.expression.operators.relational.IsNullExpression;
 import net.sf.jsqlparser.expression.operators.relational.MinorThan;
+import net.sf.jsqlparser.expression.operators.relational.NotEqualsTo;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.select.AllColumns;
@@ -36,6 +40,7 @@ import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SelectItemVisitorAdapter;
 import net.sf.jsqlparser.statement.select.SelectVisitorAdapter;
 import net.sf.jsqlparser.statement.select.SubSelect;
+import net.sf.jsqlparser.util.TablesNamesFinder;
 
 public class ParserVisitors {
 	private static int count = 0;
@@ -135,26 +140,31 @@ public class ParserVisitors {
 		private boolean hasInClause = false;
 		private boolean hasAndClause = false;
 		private boolean hasSubSelect = false;
-        //private HashMap<String, SubSelect> exists;
+
 		private List<SubSelect> exists;
 		private List<Expression> expressions;
 		private Expression inWhereExp = null;
-		private List<String> tables;
+		private List<ParserExpression> parserExpressions;
+		private List<Table> tables;
 		private List<String> inTables;
 		private List<SubSelect> inselects;
 		private List<Expression> inExpressions;
 		private boolean _hasInClause = false;
 		private boolean _hasExistsClause = false;
 		private boolean _hasSubSelect = false;
-		
-		
 
-		public ExistsVisitor(){
-			//exists = new HashMap<>();
+
+		public List<ParserExpression> getParserExpressions() {
+			return parserExpressions;
+		}
+
+		public ExistsVisitor(List<Table> tables){
 			exists = new ArrayList<>();
 			expressions = new ArrayList<>();
 			inExpressions = new ArrayList<>();
 			inselects = new ArrayList<>();
+			parserExpressions = new ArrayList<>();
+			this.tables = tables;
 		}
 
 
@@ -351,7 +361,9 @@ public class ParserVisitors {
 			}
 			AndExpression.getRightExpression().accept(this);
 			if(_hasExistsClause){
-				AndExpression.setRightExpression(expressions.get(0));
+
+				//AndExpression.setRightExpression(expressions.get(0));
+				AndExpression.setRightExpression(new EqualsTo(new LongValue(1), new LongValue(1)));
 				_hasExistsClause = false;
 			}
 			if(_hasInClause){
@@ -378,7 +390,7 @@ public class ParserVisitors {
 			OrExpression.getLeftExpression().accept(this);
 			OrExpression.getRightExpression().accept(this);
 		}
-
+		
 		@Override
 		public void visit(GreaterThan greaterThan) {
 			greaterThan.getLeftExpression().accept(this);
@@ -447,7 +459,8 @@ public class ParserVisitors {
 					}
 				});
 
-				tables = fromVisitor.tables;
+				//remove
+				//tables = fromVisitor.tables;
 				
 				ExistsWhereExp whereVisitor = new ExistsWhereExp(fromVisitor.tables, true);
 				if(plainSelect.getWhere() != null){
@@ -573,7 +586,7 @@ public class ParserVisitors {
 			hasInClause = true;
 			_hasInClause = true;
 
-			
+			ParserHelper ph = new ParserHelper();
 			
 
 			if(existExp.getSelectBody() instanceof PlainSelect){
@@ -582,7 +595,8 @@ public class ParserVisitors {
 				//TODO falta ver quando o dentro do subquery existem clausulas do WHERE sem SUBSELECT pois são precisas passar para fora
 
 				if(plainSelect.getWhere() != null){
-					ExistsVisitor existsVisitor = new ExistsVisitor();
+					//TODO: Confrimar se este novo argumento funciona (ph.extract..)
+					ExistsVisitor existsVisitor = new ExistsVisitor(ph.extractJoinTables(plainSelect));
 					plainSelect.getWhere().accept(existsVisitor);
 					processingOperators(plainSelect, existsVisitor);
 				}				
@@ -611,13 +625,68 @@ public class ParserVisitors {
 				if(_column != null){
 					IsNullExpression notNullExp = new IsNullExpression();
 					notNullExp.setLeftExpression(_column);
-					notNullExp.setNot(true);
+					notNullExp.setNot(false);
 					inWhereExp = notNullExp;
 				}
 				existExp.setAlias(new Alias("CI" + inCount));
 				inselects.add(existExp);
 				inCount++;
 
+			}
+		}
+
+		@Override
+        public void visit(NotExpression notexistsExpression) {
+			if(notexistsExpression.getExpression() instanceof ExistsExpression){
+				hasExistsClause = true;
+				_hasExistsClause = true;
+
+				ExistsExpression existsExpression = (ExistsExpression) notexistsExpression.getExpression();
+				SubSelect existExp = (SubSelect) existsExpression.getRightExpression();
+
+				if(existExp.getSelectBody() instanceof PlainSelect){
+					PlainSelect plainSelect = (PlainSelect) existExp.getSelectBody();
+
+					FromTables fromVisitor = new FromTables();				
+
+					existExp.getSelectBody().accept(new SelectVisitorAdapter(){
+						@Override
+						public void visit(PlainSelect plainSelect) {
+							plainSelect.getFromItem().accept(fromVisitor);
+							if (plainSelect.getJoins()!=null)
+							plainSelect.getJoins().forEach(join -> join.getRightItem().accept(fromVisitor));
+						}
+					});
+
+					ExistsWhereExp whereVisitor = new ExistsWhereExp(fromVisitor.tables, true);
+					plainSelect.getWhere().accept(whereVisitor);
+					//expressions.addAll(whereVisitor.getExpressions());
+
+					SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
+					ParserExpression pe = new ParserExpression();
+					if (firstSelectItem instanceof AllColumns) {
+						List<SelectItem> selectItems = new ArrayList<>();
+						for(Column c : whereVisitor.getColumns()){
+							selectItems.add(new SelectExpressionItem(c));
+							IsNullExpression notNullExp = new IsNullExpression();
+							Column colWhere = new Column();
+							colWhere.setColumnName(c.getColumnName());
+							colWhere.setTable(new Table("C" + count));
+							notNullExp.setLeftExpression(colWhere);
+							notNullExp.setNot(false);
+							pe.addWhereExpression(notNullExp);
+						}
+						plainSelect.setSelectItems(selectItems);
+					}
+
+					existExp.setAlias(new Alias("C" + count));
+					
+					pe.setSelect(existExp);
+					pe.setJoinTable(whereVisitor.getJoinTable());
+					pe.setJoinExpressions(whereVisitor.getExpressions());
+					parserExpressions.add(pe);
+					count++;
+				}
 			}
 		}
 
@@ -644,9 +713,8 @@ public class ParserVisitors {
 				});
 
 				ExistsWhereExp whereVisitor = new ExistsWhereExp(fromVisitor.tables, true);
-
 				plainSelect.getWhere().accept(whereVisitor);
-				expressions.addAll(whereVisitor.getExpressions());
+				//expressions.addAll(whereVisitor.getExpressions());
 
 				SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
 			
@@ -656,19 +724,72 @@ public class ParserVisitors {
 						selectItems.add(new SelectExpressionItem(c));
 					plainSelect.setSelectItems(selectItems);
 				}
+				ParserExpression pe = new ParserExpression();
+				//if(whereVisitor.getExpressions().size() > 1){
+					PlainSelect _outerJoin = new PlainSelect();
 
-				 GroupByElement newGroupByElement = new GroupByElement();
-				 newGroupByElement.addGroupByExpressions(whereVisitor.getColumns());
-				 plainSelect.setGroupByElement(newGroupByElement);
+					ParserHelper ph = new ParserHelper();
+					Table _table = new Table();
 
-			}
+					for(Table t : this.tables){
 
-			existExp.setAlias(new Alias("C" + count));
-			exists.add(existExp);
-			//exists.put("C" + count, existExp);
-			count++;		
+						if(ph.areTablesEqual(t, whereVisitor.getJoinTable()))
+							_table = t;
+					}
 
-			existsExpression = null;
+					_outerJoin.setFromItem(_table);
+					Join newJoin = new Join();
+					
+					List<SelectItem> selectItems = new ArrayList<>();
+					for(Column c : whereVisitor.getCorrelatedColums())
+						selectItems.add(new SelectExpressionItem(c));
+					_outerJoin.setSelectItems(selectItems);
+
+					// Create a new SubSelect
+					SubSelect subSelect = new SubSelect();
+
+					// Set the PlainSelect as the subquery
+					subSelect.setSelectBody(plainSelect);
+					subSelect.setAlias(new Alias("C" + count));
+					newJoin.setRightItem (subSelect);
+					newJoin.setLeft(false);
+					newJoin.setOuter(false);
+					
+					List<Expression> joinExp = new ArrayList<>();
+					
+					joinExp.add(ph.buildAndExpression(whereVisitor.getExpressions()));
+					newJoin.setOnExpressions(joinExp);
+					_outerJoin.addJoins(newJoin);
+
+					GroupByElement newGroupByElement = new GroupByElement();
+					newGroupByElement.addGroupByExpressions(whereVisitor.getCorrelatedColums());
+					_outerJoin.setGroupByElement(newGroupByElement);
+
+					SubSelect _subSelect = new SubSelect();
+					_subSelect.setSelectBody(_outerJoin);
+					_subSelect.setAlias(new Alias("Correl" + count));
+					
+					pe.setSelect(_subSelect);
+					pe.setJoinTable(whereVisitor.getJoinTable());
+					pe.setJoinExpressions(ph.changeToEquals(whereVisitor.getExpressions(), _table,"Correl" + count));
+				/* }else{
+					GroupByElement newGroupByElement = new GroupByElement();
+					newGroupByElement.addGroupByExpressions(whereVisitor.getColumns());
+					plainSelect.setGroupByElement(newGroupByElement);
+
+					existExp.setAlias(new Alias("C" + count));
+					pe.setSelect(existExp);
+					pe.setJoinTable(whereVisitor.getJoinTable());
+					pe.setJoinExpressions(whereVisitor.getExpressions());
+					
+				}*/
+
+				parserExpressions.add(pe);
+
+				count++;
+			}					
+
+			//existsExpression = null;
         }
 
         public boolean hasExistsClause() {
@@ -713,71 +834,137 @@ public class ParserVisitors {
     }
 
 	private static class FromTables extends FromItemVisitorAdapter {
-		List<String> tables = new ArrayList<>();
+		List<Table> tables = new ArrayList<>();
 
 		@Override
 		public void visit(SubSelect subSelect) {
 			//System.out.println("subselect=" + subSelect);
-			tables.add(subSelect.getAlias().getName());
+			tables.add(new Table(subSelect.getAlias().getName()));
 		}
 
 		@Override
 		public void visit(Table table) {
 			//System.out.println("table=" + table);
-			tables.add(table.getFullyQualifiedName());
+			tables.add(table);
 		}
 	}
 
 	private static class ExistsWhereExp extends ExpressionVisitorAdapter{
 		private List<Expression> expressions;
-		private List<String> tables;
+		private List<Table> tables;
 		private List<Column> columns;
+		private List<Column> correlatedColums;
+		private Table tableJoin;
 		private Boolean alias;
 
-		public ExistsWhereExp(List<String> tables, Boolean alias){
+		public ExistsWhereExp(List<Table> tables, Boolean alias){
 			this.tables = tables;
 			expressions = new ArrayList<>();
 			this.alias = alias;
 			this.columns = new ArrayList<>();
+			correlatedColums  = new ArrayList<>();
+			tableJoin = null;
 		}
 
 		public List<Expression> getExpressions() {
 			return expressions;
 		}
 
+		private boolean verifyOuterTable(Column column){
+			boolean isOuterTable = true;
+			for(Table table : tables){				
+				String _alias = table.getAlias() != null ? table.getAlias().getName() : "";
+				if(table.getFullyQualifiedName().equals(column.getTable().getFullyQualifiedName()) || 
+				_alias.equals(column.getTable().getFullyQualifiedName())){
+					isOuterTable = false;
+				}
+			}
+			return isOuterTable;
+		}
+
 		@Override
 		public void visit(EqualsTo equalsTo) {
 
-			WhereColumns whereColumns = new WhereColumns(tables, alias);
-
-			equalsTo.getLeftExpression().accept(whereColumns);
-			
-			if(whereColumns.isOuterTable())
-			{
-				whereColumns.setIsOuterTable(true);
-				equalsTo.getRightExpression().accept(whereColumns);
-
-				expressions.add(new EqualsTo().withLeftExpression(equalsTo.getLeftExpression()).withRightExpression(equalsTo.getRightExpression()));
-
-				equalsTo.setLeftExpression(new LongValue(1));
-				equalsTo.setRightExpression(new LongValue(1));
-			}else{
-				equalsTo.getRightExpression().accept(whereColumns);
-				if(whereColumns.isOuterTable())
+			if(equalsTo.getLeftExpression() instanceof Column && equalsTo.getRightExpression() instanceof Column){
+				Column left = (Column) equalsTo.getLeftExpression();
+				Column right = (Column) equalsTo.getRightExpression();
+				
+				if(verifyOuterTable(left))
 				{
-					whereColumns.setIsOuterTable(true);
-					equalsTo.getLeftExpression().accept(whereColumns);
+					columns.add(new Column().withColumnName(right.getColumnName()).withTable(new Table(right.getTable().getFullyQualifiedName())));
+					correlatedColums.add(new Column().withColumnName(left.getColumnName()).withTable(left.getTable()));
+					if(alias) right.setTable(new Table("C"+count));
 
-					expressions.add(new EqualsTo().withLeftExpression(equalsTo.getLeftExpression()).withRightExpression(equalsTo.getRightExpression()));
-					
+					Expression exp = new EqualsTo().withLeftExpression(equalsTo.getLeftExpression()).withRightExpression(equalsTo.getRightExpression());
+
+					tableJoin = left.getTable();	
+					expressions.add(exp);
+
 					equalsTo.setLeftExpression(new LongValue(1));
 					equalsTo.setRightExpression(new LongValue(1));
 				}
-			}
+				else if(verifyOuterTable(right))
+				{
 
-			columns.addAll(whereColumns.getColumns());
+					columns.add(new Column().withColumnName(left.getColumnName()).withTable(new Table(left.getTable().getFullyQualifiedName())));
+					correlatedColums.add(new Column().withColumnName(right.getColumnName()).withTable(right.getTable()));
+					if(alias) left.setTable(new Table("C"+count));
+
+					Expression exp = new EqualsTo().withLeftExpression(equalsTo.getLeftExpression()).withRightExpression(equalsTo.getRightExpression());
+
+					tableJoin = right.getTable();	
+					expressions.add(exp);
+
+					equalsTo.setLeftExpression(new LongValue(1));
+					equalsTo.setRightExpression(new LongValue(1));
+				}
+				
+			}			
 		}
 
+		@Override
+		public void visit(NotEqualsTo NoEqualsTo) {
+
+			if(NoEqualsTo.getLeftExpression() instanceof Column && NoEqualsTo.getRightExpression() instanceof Column){
+				Column left = (Column) NoEqualsTo.getLeftExpression();
+				Column right = (Column) NoEqualsTo.getRightExpression();
+				
+				if(verifyOuterTable(left))
+				{
+					columns.add(new Column().withColumnName(right.getColumnName()).withTable(new Table(right.getTable().getFullyQualifiedName())));
+					correlatedColums.add(new Column().withColumnName(left.getColumnName()).withTable(left.getTable()));
+					if(alias) right.setTable(new Table("C"+count));
+
+					Expression exp = new NotEqualsTo().withLeftExpression(NoEqualsTo.getLeftExpression()).withRightExpression(NoEqualsTo.getRightExpression());
+
+					tableJoin = left.getTable();	
+					expressions.add(exp);		
+
+					NoEqualsTo.setLeftExpression(new LongValue(0));
+					NoEqualsTo.setRightExpression(new LongValue(1));
+				}
+				else if(verifyOuterTable(right))
+				{
+
+					columns.add(new Column().withColumnName(left.getColumnName()).withTable(new Table(left.getTable().getFullyQualifiedName())));
+					correlatedColums.add(new Column().withColumnName(right.getColumnName()).withTable(right.getTable()));
+					if(alias) left.setTable(new Table("C"+count));
+
+					Expression exp =new NotEqualsTo().withLeftExpression(NoEqualsTo.getLeftExpression()).withRightExpression(NoEqualsTo.getRightExpression());
+
+					tableJoin = right.getTable();	
+					expressions.add(exp);
+
+					NoEqualsTo.setLeftExpression(new LongValue(0));
+					NoEqualsTo.setRightExpression(new LongValue(1));
+				}
+				
+			}
+		}
+
+		public List<Column> getCorrelatedColums() {
+			return correlatedColums;
+		}
 		public List<Column> getColumns() {
 			return columns;
 		}
@@ -785,15 +972,17 @@ public class ParserVisitors {
 		public void setColumns(List<Column> columns) {
 			this.columns = columns;
 		}
+
+		public Table getJoinTable(){return tableJoin;}
 	}
 
 	private static class WhereColumns extends ExpressionVisitorAdapter{
 		private boolean isOuterTable = false;
-		private List<String> tables;
+		private List<Table> tables;
 		private List<Column> columns;
 		private Boolean alias;
 
-		public WhereColumns(List<String> tables, Boolean alias){
+		public WhereColumns(List<Table> tables, Boolean alias){
 			this.tables = tables;
 			this.columns = new ArrayList<>();
 			this.alias = alias;
@@ -806,8 +995,13 @@ public class ParserVisitors {
 				columns.add(new Column().withColumnName(column.getColumnName()).withTable(new Table(column.getTable().getFullyQualifiedName())));
 				if(alias) column.setTable(new Table("C"+count));
 			}
-			if(!tables.contains(column.getTable().getFullyQualifiedName())){
-				isOuterTable = true;
+
+			for(Table table : tables){				
+				String _alias = table.getAlias() != null ? table.getAlias().getName() : "";
+				if(!table.getFullyQualifiedName().equals(column.getTable().getFullyQualifiedName()) && 
+				   !_alias.equals(column.getTable().getFullyQualifiedName())){
+					isOuterTable = true;
+				}
 			}
 		}
 
@@ -822,5 +1016,6 @@ public class ParserVisitors {
 		public List<Column> getColumns() {
 			return columns;
 		}
+
 	}
 }

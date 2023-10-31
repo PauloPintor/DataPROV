@@ -52,7 +52,7 @@ select supplier.s_suppkey, supplier.s_name, supplier.s_address, supplier.s_phone
 
 
 -- Q16 not supported by the current version of the system
-select p_brand, p_type, p_size, count(distinct ps_suppkey) as supplier_cnt from partsupp, part where p_partkey = ps_partkey and p_brand <> 'Brand#51' and p_type not like 'ECONOMY PLATED%' and p_size in (44, 49, 13, 20, 36, 19, 35, 25) and ps_suppkey not in ( select s_suppkey from supplier where s_comment like '%Customer%Complaints%' ) group by p_brand, p_type, p_size order by supplier_cnt desc, p_brand, p_type, p_size;
+select part.p_brand, part.p_type, part.p_size, count(distinct partsupp.ps_suppkey) as supplier_cnt from partsupp, part where part.p_partkey = partsupp.ps_partkey and part.p_brand <> 'Brand#51' and part.p_type not like 'ECONOMY PLATED%' and part.p_size in (44, 49, 13, 20, 36, 19, 35, 25) and partsupp.ps_suppkey not in ( select supplier.s_suppkey from supplier where supplier.s_comment like '%Customer%Complaints%' ) group by part.p_brand, part.p_type, part.p_size order by supplier_cnt desc, part.p_brand, part.p_type, part.p_size;
 
 -- Q17
 select sum(lineitem.l_extendedprice) / 7.0 as avg_yearly from lineitem, part where p_partkey = lineitem.l_partkey and part.p_brand = 'Brand#14' and part.p_container = 'WRAP BAG' and lineitem.l_quantity < ( select 0.2 * avg(lineitem.l_quantity) from lineitem.lineitem where lineitem.l_partkey = part.p_partkey );
@@ -73,3 +73,5 @@ select s_name, count(*) as numwait from supplier, lineitem l1, orders, nation wh
 -- Q22 not supported by the current version of the system
 select cntrycode, count(*) as numcust, sum(c_acctbal) as totacctbal from ( select substring(c_phone from 1 for 2) as cntrycode, c_acctbal from customer where substring(c_phone from 1 for 2) in ('18', '27', '19', '11', '22', '33', '15') and c_acctbal > ( select avg(c_acctbal) from customer where c_acctbal > 0.00 and substring(c_phone from 1 for 2) in ('18', '27', '19', '11', '22', '33', '15') ) and not exists ( select * from orders where o_custkey = c_custkey ) ) as custsale group by cntrycode order by cntrycode;
 
+SELECT orders.o_orderpriority, count(*) AS order_count FROM orders, (SELECT lineitem.l_orderkey FROM lineitem WHERE 1 = 1 AND lineitem.l_commitdate < lineitem.l_receiptdate GROUP BY lineitem.l_orderkey) AS C0 WHERE orders.o_orderdate >= DATE '1993-07-01' AND orders.o_orderdate < DATE '1993-07-01' + INTERVAL '3' month AND C0.l_orderkey = orders.o_orderkey
+GROUP BY orders.o_orderpriority ORDER BY orders.o_orderpriority;

@@ -3,6 +3,7 @@ package com.generic.Parser;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -81,8 +82,6 @@ public class Parser {
 			Select selectStatement = (Select) statement;
 			projectionColumns = new ArrayList<List<ParserColumn>>();
 
-
-
 			//[ ] It is not enough to be a SetOpeartionList, since Intersects are also a set of operations
 			if(selectStatement.getSelectBody() instanceof SetOperationList)
             {
@@ -114,7 +113,7 @@ public class Parser {
 
 				//projectionColumns = initializeProjCols(getProjectionColumns(plainSelect));
                 if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()){
-                    plainSelect = JoinProvenance(plainSelect);
+                    plainSelect = JoinProvenance(plainSelect, false);
                     selectStatement.setSelectBody(plainSelect);
 				}else{
 					plainSelect = SelectProvenance(plainSelect);
@@ -132,22 +131,23 @@ public class Parser {
         return result;
 	}
 
-
-
 	private void CheckWhere(PlainSelect plainSelect) {
-		ExistsVisitor existsVisitor = new ExistsVisitor();
+		ParserHelper ph = new ParserHelper();
+		ExistsVisitor existsVisitor = new ExistsVisitor(ph.extractJoinTables(plainSelect));
 		plainSelect.getWhere().accept(existsVisitor);
+
+		
 
 		if(existsVisitor.hasInClause()){
 			if(existsVisitor.getInSubSelects().size() > 0){
 				PlainSelect _plainSelect = new PlainSelect();
-				List<Table> joinTables = extractJoinTables(plainSelect);
+				List<Table> joinTables = ph.extractJoinTables(plainSelect);
 				List<Join> joins = new ArrayList<>();
 				for(SubSelect select : existsVisitor.getInSubSelects()){
 					List<Expression> inExpressions = new ArrayList<>();
 					Column _col1 = (Column)existsVisitor.getInExpressions().get(0);
 					Column _col2 = (Column)existsVisitor.getInExpressions().get(1);
-					
+
 					if(joinTables.stream().filter(t -> t.getFullyQualifiedName().equals(_col1.getTable().getFullyQualifiedName())).collect(Collectors.toList()).size() > 0){
 						if(_plainSelect.getFromItem() == null){
 							_plainSelect.setFromItem(_col1.getTable());
@@ -176,7 +176,7 @@ public class Parser {
 					
 					newJoin.setRightItem(select);
 					newJoin.setLeft(true);
-					newJoin.setOuter(true);
+					newJoin.setOuter(false);
 
 					inExpressions.add(new EqualsTo(existsVisitor.getInExpressions().get(0),existsVisitor.getInExpressions().get(1)));
 					newJoin.setOnExpressions(inExpressions);
@@ -221,7 +221,131 @@ public class Parser {
 			}
 		}
 
-		if(existsVisitor.hasExistsClause() || existsVisitor.hasSubSelect()){	
+		if(existsVisitor.hasExistsClause()){	
+			
+			if(existsVisitor.getParserExpressions().size() > 0){
+				PlainSelect _plainSelect = new PlainSelect();
+				List<Table> joinTables = ph.extractJoinTables(plainSelect);
+				List<Table> toRemove = new ArrayList<>();
+				List<Join> joins = new ArrayList<>();
+
+				List<Expression> expressions = new ArrayList<>();
+
+				for(ParserExpression pe : existsVisitor.getParserExpressions())
+				{
+					for(Table table : joinTables){
+						if(ph.areTablesEqual(pe.getJoinTable(),table)){
+							if(!(toRemove.size() > 0 && ph.areTablesEqual(toRemove.get(toRemove.size()-1),table))){
+								if(_plainSelect.getFromItem() == null){
+									_plainSelect.setFromItem(table);
+								}else{
+									Join _newJoin = new Join();
+									_newJoin.setRightItem(table);
+									_newJoin.setSimple(true);
+									joins.add(_newJoin);
+									_plainSelect.addJoins(joins);
+								}
+
+								toRemove.add(table);
+							}			
+							
+							Join newJoin = new Join();
+							
+							newJoin.setRightItem(pe.getSelect());
+							if(pe.HasWhereExp()){
+								newJoin.setLeft(true);
+								newJoin.setOuter(false);
+							}else{
+								newJoin.setLeft(false);
+								newJoin.setOuter(false);
+							}
+
+							List<Expression> joinExp = new ArrayList<>();
+							joinExp.add(ph.buildAndExpression(pe.getJoinExpression()));
+							newJoin.setOnExpressions(joinExp);
+							joins.add(newJoin);
+
+							if(pe.HasWhereExp())
+							expressions.addAll(pe.getWhereExpressions());
+							break;
+						}
+					}					
+				}
+				joinTables.removeAll(toRemove);
+				if(joinTables.size() > 0){
+					for(Table table : joinTables){
+						Join newJoin = new Join();
+						newJoin.setRightItem(table);
+						newJoin.setSimple(true);
+						joins.add(newJoin);
+						
+					}
+				}
+
+				_plainSelect.addJoins(joins);
+				plainSelect.setFromItem(_plainSelect.getFromItem());
+				plainSelect.setJoins(_plainSelect.getJoins());
+
+				if(plainSelect.getWhere() instanceof ExistsExpression)
+				{
+					plainSelect.setWhere(null);
+				}
+				
+				if(expressions.size() > 0){
+					Expression where = plainSelect.getWhere();
+					
+					if(where == null){
+						where = expressions.get(0);
+						expressions.remove(0);
+					}
+					else 
+
+					for(Expression exp : expressions){
+						where = new AndExpression(where, exp);
+					}
+
+					plainSelect.setWhere(where);
+				}
+			}
+			/*for(SubSelect select : existsVisitor.getSubSelects()){
+				Join newJoin = new Join();
+				newJoin.setRightItem(select);
+				newJoin.setSimple(true);
+				joins.add(newJoin);
+				plainSelect.addJoins(joins);
+			}
+
+			if(existsVisitor.hasAndClause() && existsVisitor.getExpressions().size() > 1){
+				List<Expression> expressions = existsVisitor.getExpressions();
+				expressions.remove(0);
+				Expression where = plainSelect.getWhere();
+				for(Expression exp : expressions){
+					where = new AndExpression(where, exp);
+				}
+
+				plainSelect.setWhere(where);
+			}else if(existsVisitor.hasSubSelect() && existsVisitor.getExpressions().size() > 0){
+				List<Expression> expressions = existsVisitor.getExpressions();
+				Expression where = plainSelect.getWhere();
+				for(Expression exp : expressions){
+					where = new AndExpression(where, exp);
+				}
+
+				plainSelect.setWhere(where);
+			}else if(!existsVisitor.hasAndClause() && !existsVisitor.hasSubSelect()){
+				plainSelect.setWhere(new EqualsTo(new LongValue(1),new LongValue(1)));
+				if(existsVisitor.getExpressions().size() > 0){
+					Expression where = plainSelect.getWhere();
+					for(Expression exp : existsVisitor.getExpressions()){
+						where = new AndExpression(where, exp);
+					}
+
+					plainSelect.setWhere(where);
+				}
+			}*/
+		}
+
+		if(existsVisitor.hasSubSelect()){
 			List<Join> joins = new ArrayList<>();
 			for(SubSelect select : existsVisitor.getSubSelects()){
 				Join newJoin = new Join();
@@ -269,7 +393,7 @@ public class Parser {
 	}
 
 	//public PlainSelect JoinProvenance(PlainSelect plainSelect, String unionId) throws JSQLParserException, AmbigousParserColumn {
-	public PlainSelect JoinProvenance(PlainSelect plainSelect) throws JSQLParserException, AmbigousParserColumn {
+	public PlainSelect JoinProvenance(PlainSelect plainSelect, Boolean correlated) throws JSQLParserException, AmbigousParserColumn {
         String provToken = "";
 
         if(plainSelect.getFromItem() instanceof Table)
@@ -277,7 +401,8 @@ public class Parser {
             Table tempTable = (Table) plainSelect.getFromItem();
             //this.JoinWhereColumns(plainSelect, true);
 			//this.SelectWhereColumns(plainSelect, null);
-            provToken = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+			if(!correlated)
+            	provToken = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
         }else if(plainSelect.getFromItem() instanceof SubSelect){
             SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
 
@@ -311,7 +436,7 @@ public class Parser {
 					//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
 					//tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect, unionId));
 					//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
-					tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
+					tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect, false));
 				}else{
 					//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
 					tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
@@ -347,7 +472,7 @@ public class Parser {
             {
 				
                 SubSelect tempSubSelect = (SubSelect) join.getRightItem();
-                if(!tempSubSelect.getAlias().getName().toLowerCase().contains("minmax")){
+				if(tempSubSelect.getAlias().getName().toLowerCase().contains("correl")){
 					PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
 				
 					//SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
@@ -355,13 +480,35 @@ public class Parser {
 					//TODO: falta verificar para UNIONS, DISTINCTS, etc
 					if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
 						//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
-						tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect));
+						tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect, true));
+					}else{
+						//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+						tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
+					}
+
+					provToken = provToken + "|| ' . ' || "+tempSubSelect.getAlias().getName()+".prov";
+
+				}
+                else if(!tempSubSelect.getAlias().getName().toLowerCase().contains("minmax")){
+					PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
+				
+					//SubSelectWhereProvenance(tempPlainSelect, tempSubSelect.getAlias().getName());
+
+					//TODO: falta verificar para UNIONS, DISTINCTS, etc
+					if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty()){
+						//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
+						tempSubSelect.setSelectBody(JoinProvenance(tempPlainSelect, false));
 					}else{
 						//this.SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
 						tempSubSelect.setSelectBody(SelectProvenance(tempPlainSelect));
 					}
 					
-					provToken = provToken + "|| ' . ' ||" + tempSubSelect.getAlias().getName()+".prov";
+					if(join.isLeft())
+						provToken = "COALESCE(" + provToken + " || ' . ' || "+tempSubSelect.getAlias().getName()+".prov, "+provToken+")";
+					else if(correlated)
+						provToken = tempSubSelect.getAlias().getName()+".prov";
+					else
+						provToken = provToken + "|| ' . ' || "+tempSubSelect.getAlias().getName()+".prov";
 				}
             }
             //this.AddUnionColumns(plainSelect, false);
@@ -375,7 +522,7 @@ public class Parser {
 		
 		if(funcVisitor.hasFunction()) aggFunction = funcVisitor.getAggExpression();
 
-		String provenance ="'(' || "+provToken+" || ')' " + aggFunction;
+		String provenance = correlated ? provToken : "'(' || "+provToken+" || ')' " + aggFunction;
 		String _column = "";	
         if(plainSelect.getGroupBy() != null || projectionOnlyFunc(plainSelect.getSelectItems())){
 			SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
@@ -499,7 +646,7 @@ public class Parser {
 
 					if (tempPlainSelect.getJoins() != null && !tempPlainSelect.getJoins().isEmpty())
 					{
-						tempPlainSelect = JoinProvenance(tempPlainSelect);
+						tempPlainSelect = JoinProvenance(tempPlainSelect, false);
 					}else{
 						tempPlainSelect = SelectProvenance(tempPlainSelect);
 					}
@@ -548,7 +695,7 @@ public class Parser {
 				plainSelect = DistinctProvenance(plainSelect, tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName());
 			}else if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty())
 			{
-                plainSelect = JoinProvenance(plainSelect);
+                plainSelect = JoinProvenance(plainSelect, false);
 				//plainSelect = JoinProvenance(plainSelect, unionId);
 			}
 			else if (projectionOnlyFunc(plainSelect.getSelectItems()))
@@ -571,7 +718,8 @@ public class Parser {
 				SelectExpressionItem newColumn = new SelectExpressionItem();
 				SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
 				String _column = "";
-				String provenance = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + tempTable.getFullyQualifiedName() + ".prov";
+				
+				String provenance = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName()) + ".prov";
 				if (firstSelectItem instanceof SelectExpressionItem) {
 					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) firstSelectItem;
 					if(selectExpressionItem.getExpression() instanceof Column){
@@ -590,7 +738,7 @@ public class Parser {
 				plainSelect.addSelectItems(newColumn);
 			}else{
 				SelectExpressionItem newColumn = new SelectExpressionItem();
-				String prov = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + tempTable.getFullyQualifiedName() + ".prov as prov";
+				String prov = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName()) + ".prov as prov";
 				newColumn.setExpression(new Column(prov));
 				plainSelect.addSelectItems(newColumn);
 			}
@@ -628,7 +776,7 @@ public class Parser {
 					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
 					//tempPlainSelect = JoinProvenance(tempPlainSelect, unionId);
 					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName());
-					tempPlainSelect = JoinProvenance(tempPlainSelect);
+					tempPlainSelect = JoinProvenance(tempPlainSelect, false);
 				}else{
 					//SelectWhereColumns(tempPlainSelect, tempSubSelect.getAlias().getName(), unionId);
 					//tempPlainSelect = SelectProvenance(tempPlainSelect, unionId);
@@ -687,6 +835,9 @@ public class Parser {
 		}
 		return result;
 	}
+
+	
+
 
 	private PlainSelect DistinctProvenance(PlainSelect plainSelect, String alias) {
 		List<Expression> groupByExpressions = new ArrayList<>();
@@ -1222,32 +1373,6 @@ public class Parser {
 			return String.format("STRING_AGG(%s, ' %c ' ORDER BY %s)", expression, separator, orderByColumn);
 		
 		return "";
-    }
-
-	private List<Table> extractJoinTables(PlainSelect plainSelect ) {
-        List<Table> joinTables = new ArrayList<>();
-
-        try {
-            // First, add the table from the main "FROM" clause
-            FromItem mainFromItem = plainSelect.getFromItem();
-            if (mainFromItem instanceof Table) {
-                joinTables.add((Table) mainFromItem);
-            }
-
-            // Then, iterate over the join clauses and add join tables
-            if (plainSelect.getJoins() != null) {
-                for (Join join : plainSelect.getJoins()) {
-                    FromItem joinFromItem = join.getRightItem();
-                    if (joinFromItem instanceof Table) {
-                        joinTables.add((Table) joinFromItem);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return joinTables;
     }
 
 	public void printWhere(){

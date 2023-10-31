@@ -1,8 +1,10 @@
 package com.generic.provenance;
 
 import java.sql.ResultSet;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -18,19 +20,22 @@ public class App
 {
     public static void main( String[] args )
     {
-
 		
-		boolean withProv = false;
+		boolean withProv = true;
 		String database = "postgres";
-		String databaseURL = "localhost:5432/tpch_10";
+		String databaseURL = "localhost:5432/tpch_100";
 		//String databaseURL = "localhost:5432/ssb_p?options=-c%20search_path=public,provsql";
 		//String databaseURL = "jdbc:trino://localhost:8080";
-		//String sql = "SELECT * FROM (SELECT A FROM X UNION SELECT B FROM Y) UNION SELECT C FROM A";
-		//String sql = "Select TabB.coly from TabB where TabB.coly IN (select teste from tabA where tabA.cola = TabB.colB)";
-		String sql = "select customer.c_name, customer.c_custkey, orders.o_orderkey, orders.o_orderdate, orders.o_totalprice, sum(lineitem.l_quantity) from customer, orders, lineitem where orders.o_orderkey in (select lineitem.l_orderkey from lineitem group by lineitem.l_orderkey having sum(lineitem.l_quantity) > 215) and customer.c_custkey = orders.o_custkey and orders.o_orderkey = lineitem.l_orderkey group by customer.c_name, customer.c_custkey, orders.o_orderkey, orders.o_orderdate, orders.o_totalprice order by orders.o_totalprice desc, orders.o_orderdate LIMIT 100;";
 
-		sql = "select supplier.s_name, supplier.s_address from supplier, nation where supplier.s_suppkey in ( select partsupp.ps_suppkey from partsupp where partsupp.ps_partkey in ( select part.p_partkey from part where part.p_name like 'white%' ) and partsupp.ps_availqty > ( select 0.5 * sum(lineitem.l_quantity) from lineitem where lineitem.l_partkey = partsupp.ps_partkey and lineitem.l_suppkey = partsupp.ps_suppkey and lineitem.l_shipdate >= date '1994-01-01' and lineitem.l_shipdate < date '1994-01-01' + interval '1' year ) ) and supplier.s_nationkey = nation.n_nationkey and nation.n_name = 'INDIA' order by supplier.s_name";
+		String sql = "select part.p_brand, part.p_type, part.p_size, count(distinct partsupp.ps_suppkey) as supplier_cnt from partsupp, part where part.p_partkey = partsupp.ps_partkey and part.p_brand <> 'Brand#13' and part.p_type not like 'ECONOMY PLATED%' and part.p_size in (11, 37, 24, 48, 21, 16, 20, 27) and partsupp.ps_suppkey not in ( select supplier.s_suppkey from supplier where supplier.s_comment like '%Customer%Complaints%' ) group by part.p_brand, part.p_type, part.p_size order by supplier_cnt desc, part.p_brand, part.p_type, part.p_size;";
 		
+		
+
+		//ESTE QUERY ESTÁ A SER MAL REESCRITO
+		//sql = "SELECT A.a FROM A JOIN (SELECT MIN(B.c) minc FROM B) B ON A.a > B.minc";
+		//sql = "SELECT c FROM D UNION (SELECT a FROM A UNION SELECT b FROM C)";
+
+
         try {
 			TrinoHelper th = null;
 			PostgresHelper ph = null;
@@ -47,7 +52,7 @@ public class App
 			if(withProv) {
  				Parser parser = new Parser(database);
 				sql = parser.parseQuery(sql);
-				//System.out.println(sql);
+				System.out.println(sql);
 			}
 
 			long annotations = System.currentTimeMillis();

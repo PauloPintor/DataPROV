@@ -155,7 +155,7 @@ public class ResultProcess {
 							+ "}";
 			
 			for (Map.Entry<String, String> entry : mapTokens.entrySet()) 
-				why = why.replaceAll(entry.getKey(), entry.getValue());	
+				why = why.replaceAll(entry.getValue(),entry.getKey());	
 		}
 		else
 		{
