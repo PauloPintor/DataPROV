@@ -12,9 +12,11 @@ public class PostgresHelper {
 	 */
 	private Connection conn = null;
 	private String postgresURL = "";
+	private String userName = "";
+	private String password = "";
 	
 	/**
-	 * Class constructor where it is initialised the connection with Trino (conn variable)
+	 * Class constructor where it is initialised the connection with Postgres (conn variable)
 	 * 
 	 * @throws Exception If variable conn is not initialised or Trino is not initialised
 	 */
@@ -28,6 +30,12 @@ public class PostgresHelper {
 		}
     }
 
+	/**
+	 * Class constructor where it is initialised the connection with Postgres (conn variable) with database URL as argument
+	 * 
+	 * @param databaseURL String with the database URL
+	 * @throws Exception if the propertie values are not set
+	 */
 	public PostgresHelper(String databaseURL) throws Exception{
 		postgresURL = databaseURL;
 
@@ -40,7 +48,29 @@ public class PostgresHelper {
 	}
 
 	/**
-	 * Creates the connection with Trino and returns true if the connection is obtained
+	 * Class constructor where it is initialised the connection with Postgres (conn variable) with database URL, user and password as arguments
+	 * 
+	 * @param databaseURL String with the database URL
+	 * @param user String with the user
+	 * @param password String with the password
+	 * @throws Exception if the propertie values are not set
+	 */
+	public PostgresHelper(String databaseURL, String userName, String password) throws Exception{
+		this.postgresURL = databaseURL;
+		this.userName = userName;
+		this.password = password;
+
+		if(!this.setConnection()) {
+			throw new Exception("The connection variable has not been initialised");
+		}
+		else if (!this.TestConnection()) {
+			throw new Exception("PostgreSQL is not initialised");
+		}
+	}
+
+
+	/**
+	 * Creates the connection with Postgresql and returns true if the connection is obtained
 	 * or false if not.
 	 * 
 	 * @return boolean
@@ -54,15 +84,13 @@ public class PostgresHelper {
 		 try {
 			Class.forName("org.postgresql.Driver");
 			conn = DriverManager
-			   .getConnection("jdbc:postgresql://"+postgresURL,
-			   "postgres", "postgres");
+			   .getConnection("jdbc:postgresql://"+this.postgresURL,
+			   this.userName, this.password);
 		 } catch (Exception e) {
 			e.printStackTrace();
 			System.err.println(e.getClass().getName()+": "+e.getMessage());
 			System.exit(0);
 		 }
-		 
-		 //System.out.println("Opened database successfully");
 
 		 return conn != null;
 	}

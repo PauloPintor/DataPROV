@@ -25,6 +25,9 @@ public class TrinoHelper {
 	 */
 	private Connection conn = null;
 	private String trinoURL = "";
+	private String userName = "";
+	private String password = "";
+	private boolean ssl = false;
 	
 	/**
 	 * Class constructor where it is initialised the connection with Trino (conn variable)
@@ -41,9 +44,39 @@ public class TrinoHelper {
 		}
     }
 	
+	/**
+	 * Class constructor where it is initialised the connection with Trino (conn variable) with database URL as argument
+	 * 
+	 * @param databaseURL String with the database URL
+	 * @throws Exception if the propertie values are not set
+	 */
 	public TrinoHelper(String databaseURL) throws Exception
 	{
 		trinoURL = databaseURL;
+		if(!this.setConnection()) {
+			throw new Exception("The connection variable has not been initialised");
+		}
+		else if (!this.TestConnection()) {
+			throw new Exception("Trino is not initialised");
+		}
+	}
+
+	/**
+	 * Class constructor where it is initialised the connection with Postgres (conn variable) with database URL, user, password and SSL as arguments
+	 * 
+	 * @param databaseURL String with the database URL
+	 * @param user String with the user
+	 * @param password String with the password
+	 * @param ssl boolean with the ssl option
+	 * @throws Exception if the propertie values are not set
+	 */
+	public TrinoHelper(String databaseURL, String userName, String password, boolean ssl) throws Exception
+	{
+		this.trinoURL = databaseURL;
+		this.userName = userName;
+		this.password = password;
+		this.ssl = ssl;
+
 		if(!this.setConnection()) {
 			throw new Exception("The connection variable has not been initialised");
 		}
@@ -63,15 +96,15 @@ public class TrinoHelper {
 		 if (conn != null) {
 			 return true;
 		 }
-
-		 ConfigHelper config = new ConfigHelper();
+		 
+		 String url = "jdbc:trino://"+trinoURL;
 		 
 	     Properties properties = new Properties();
-		 properties.setProperty("user", config.getPropertieValue("trino.user"));
-		 properties.setProperty("password", config.getPropertieValue("trino.password"));
-		 properties.setProperty("SSL", config.getPropertieValue("trino.ssl"));
+		 properties.setProperty("user", this.userName);
+		 properties.setProperty("password", this.password);
+		 properties.setProperty("SSL", ssl ? "true" : "false");
 		 
-		 conn = DriverManager.getConnection(trinoURL, properties);
+		 conn = DriverManager.getConnection(url, properties);
 
 		 return conn != null;
 	}
@@ -110,7 +143,7 @@ public class TrinoHelper {
 	    resultSet.close();
 	    statement.close();
 	    
-	    return result;
+		return result;
 	}
 	
 	/**

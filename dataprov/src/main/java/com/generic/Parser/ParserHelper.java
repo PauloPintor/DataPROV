@@ -3,7 +3,10 @@ package com.generic.Parser;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.Function;
+import net.sf.jsqlparser.expression.operators.arithmetic.Multiplication;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.relational.*;
 import net.sf.jsqlparser.schema.Column;
@@ -11,6 +14,10 @@ import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.select.FromItem;
 import net.sf.jsqlparser.statement.select.Join;
 import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.SelectExpressionItem;
+import net.sf.jsqlparser.statement.select.SelectItem;
+import net.sf.jsqlparser.statement.select.SetOperationList;
+import net.sf.jsqlparser.statement.select.SubSelect;
 
 public class ParserHelper {
 	public Expression buildAndExpression(List<Expression> expressions) {
@@ -89,7 +96,7 @@ public class ParserHelper {
 		return tableName1.equals(tableName2) && ((alias1 == null && alias2 == null) || alias1.equals(alias2)) || tableName1.equals(alias2) || tableName2.equals(alias1);
 	}
 
-		public List<Table> extractJoinTables(PlainSelect plainSelect ) {
+	public List<Table> extractJoinTables(PlainSelect plainSelect ) {
         List<Table> joinTables = new ArrayList<>();
 
         try {
@@ -115,5 +122,117 @@ public class ParserHelper {
         return joinTables;
     }
 
+	/**
+     * The function generates a String with the a SQL function to aggregegate values. For instance, in PostgreSQL is 'string_agg', for Trino is 'listaGG'. The expression is the column to be aggregated, the separator is the character to separate the values and the orderByColumn is the column to order the values.
+     * 
+     * @param expression the colum to be aggregated
+     * @param separator the character to separate the values
+     * @param orderByColumn the column to order the values
+     * @return a String with the SQL Standard function 'ListAGG'
+     */
+    public String getAggFunction(String expression, char separator, String orderByColumn, String dbname){
+		if(dbname.toLowerCase().compareTo("trino") == 0)
+        	return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
+		else if(dbname.toLowerCase().compareTo("postgres") == 0)
+			return String.format("STRING_AGG(%s, ' %c ' ORDER BY %s)", expression, separator, orderByColumn);
+		
+		return "";
+    }
+
+	/**
+	 * A funciton to check if the query is a projection only with a function (Min, Max, Count, etc)
+	 * @param selectItems the list of columns in the projection
+	 * @return a boolean to indicate if the query is a projection only with a function
+	 */
+	public boolean projectionOnlyFunc(List<SelectItem> selectItems) {
+		boolean result = false;
+		
+		if(selectItems.get(0) instanceof SelectExpressionItem){
+			SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItems.get(0);
+			if(selectExpressionItem.getExpression() instanceof Function){
+				result = true;
+			}else if(selectExpressionItem.getExpression() instanceof Multiplication){
+				result = true;
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * A function that constructs the column needed in the aggregation function for the order by
+	 * @param firstColumn the first column in the projection
+	 * @return a String with the column needed in the aggregation function for the order by
+	 * @throws Exception
+	 */
+	public String aggFunctionOrderBy(SelectItem firstColumn) throws Exception {
+		SelectExpressionItem selectExpressionItem = (SelectExpressionItem) firstColumn;
+		if(selectExpressionItem.getExpression() instanceof Column){
+			Column column = (Column) selectExpressionItem.getExpression();
+			return column.getFullyQualifiedName();			
+		}else if(selectExpressionItem.getExpression() instanceof Function){
+			return "1";
+		}else{
+			throw new Exception("The first column in the projection is not a column or a function");
+		}
+	}
+
+	/**
+	 * A function that returns the columns of a query in a list to apply the UNION rules
+	 * 
+	 * @param object the query
+	 * @return a list of columns
+	 */
+	public List<SelectItem> getUnionColumns(Object object){
+		List<SelectItem> result = new ArrayList<SelectItem>();
+		int count = 0;
+		if(object instanceof PlainSelect){
+			PlainSelect plainSelect = (PlainSelect) object;
+
+			for (SelectItem selectItem : plainSelect.getSelectItems()) {
+				if (selectItem instanceof SelectExpressionItem) {
+					
+					SelectExpressionItem expressionItem = (SelectExpressionItem) selectItem;
+					if(expressionItem.getExpression() instanceof Function){
+						if(expressionItem.getAlias() == null){
+							expressionItem.setAlias(new Alias("func_"+count));
+						}
+						Column _column = new Column(new Table("_un"), "func_"+count);
+						result.add(new SelectExpressionItem(_column));  
+					}else
+					{
+						Column _column = new Column(new Table("_un"), ((Column) expressionItem.getExpression()).getColumnName());
+						result.add(new SelectExpressionItem(_column));  
+					}	  
+				}
+			}
+		}else if(object instanceof SubSelect){
+			SubSelect tempSubSelect = (SubSelect) object;
+			if(tempSubSelect.getSelectBody() instanceof PlainSelect){
+				PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
+				for (SelectItem selectItem : tempPlainSelect.getSelectItems()) {
+					if (selectItem instanceof SelectExpressionItem) {
+						
+						SelectExpressionItem expressionItem = (SelectExpressionItem) selectItem;
+						if(expressionItem.getExpression() instanceof Function){
+							if(expressionItem.getAlias() == null){
+								expressionItem.setAlias(new Alias("func_"+count));
+							}
+							Column _column = new Column(new Table("_un"), "func_"+count);
+							result.add(new SelectExpressionItem(_column)); 
+						}else{
+							Column _column = new Column(new Table("_un"), ((Column) expressionItem.getExpression()).getColumnName());
+							result.add(new SelectExpressionItem(_column));
+						}
+
+						   
+					}
+				}
+			}else if(tempSubSelect.getSelectBody() instanceof SetOperationList){
+				result = getUnionColumns(((SetOperationList) tempSubSelect.getSelectBody()).getSelects().get(0));
+			}
+		}
+		return result;
+	}
 
 }

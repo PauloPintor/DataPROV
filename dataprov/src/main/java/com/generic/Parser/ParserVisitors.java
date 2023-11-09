@@ -49,6 +49,8 @@ public class ParserVisitors {
 	public static class FunctionProjection extends SelectItemVisitorAdapter {
 		private boolean hasFunction = false;
 		private String aggExpression = "";
+		private boolean minMax = false;
+		private Column minMaxColumn = null;
 
 		@Override
 		public void visit(SelectExpressionItem item)  {
@@ -57,16 +59,35 @@ public class ParserVisitors {
 
 				if(function.getName().toLowerCase().equals("count")){
 					hasFunction = true;
-					aggExpression = "|| ' x ' || CAST(1 as varchar)";
+					aggExpression = "|| ' . ' || CAST(1 as varchar)";
 				}else if(function.getName().toLowerCase().equals("sum")){
 					if(hasColumns(function.getParameters())){
 						hasFunction = true;
-						aggExpression += "|| ' x ' || CAST("+function.getParameters().toString()+" as varchar)";
+						aggExpression += "|| ' . ' || CAST("+function.getParameters().toString()+" as varchar)";
 					}
 				}else if(function.getName().toLowerCase().equals("min")){
 					if(hasColumns(function.getParameters())){
+						function.getParameters().getExpressions().forEach(e -> {
+							if(e instanceof Column){
+								minMaxColumn = (Column) e;
+							}
+						});
+
 						hasFunction = true;
-						aggExpression = "|| ' x ' || CAST("+function.getParameters().toString()+" as varchar)";
+						minMax = true;
+						aggExpression = "|| ' . ' || CAST("+function.getParameters().toString()+" as varchar)";
+					}
+				}else if(function.getName().toLowerCase().equals("max")){
+					if(hasColumns(function.getParameters())){
+						function.getParameters().getExpressions().forEach(e -> {
+							if(e instanceof Column){
+								minMaxColumn = (Column) e;
+							}
+						});
+						
+						hasFunction = true;
+						minMax = true;
+						aggExpression = "|| ' . ' || CAST("+function.getParameters().toString()+" as varchar)";
 					}
 				}
 
@@ -103,7 +124,7 @@ public class ParserVisitors {
 					aggExpression = aggExpression +"*"+ multiplication.getLeftExpression().toString();
 				}
 
-				aggExpression = "|| ' x ' || CAST("+aggExpression+" as varchar)";
+				aggExpression = "|| ' . ' || CAST("+aggExpression+" as varchar)";
 			}
 		}	
 
@@ -124,6 +145,14 @@ public class ParserVisitors {
 				}
 			}
 			return false;
+		}
+
+		public boolean isMinMax() {
+			return minMax;
+		}
+
+		public Column getMinMaxColumn() {
+			return minMaxColumn;
 		}
 
 		public boolean hasFunction() {

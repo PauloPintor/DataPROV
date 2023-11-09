@@ -27,3 +27,8 @@ replay_pid*
 .gitattributes
 dataprov/.DS_Store
 .DS_Store
+genericprovenance/
+genericprovenance/bin/
+dataprov/src/main/java/com/generic/Parser/_Parser.java
+genericprovenance/bin/.settings/org.eclipse.jdt.core.prefs
+dataprov/src/main/java/com/generic/Dataprov/TestApp.java
