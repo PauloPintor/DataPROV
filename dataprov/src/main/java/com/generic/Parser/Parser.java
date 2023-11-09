@@ -49,6 +49,12 @@ public class Parser {
 
 	}
 
+	/**
+	 * A function which receives a query and returns the same query with the annotations
+	 * @param query the query to be parsed
+	 * @return the query with the annotations
+	 * @throws Exception
+	 */
 	public String rewriteQuery(String query) throws Exception{
 		Statement statement = CCJSqlParserUtil.parse(query);
 		String result = "";
@@ -62,6 +68,12 @@ public class Parser {
 		return result;
 	}
 
+	/**
+	 * The function responsible to detect the type of query and help on the algorithm recursion
+	 * @param object the query as an object
+	 * @return a PlainSelect object with the annotations
+	 * @throws Exception
+	 */
 	private PlainSelect addAnnotations(Object object) throws Exception {
 		PlainSelect newSelect = null;
 		if(object instanceof SetOperationList)
@@ -204,6 +216,12 @@ public class Parser {
 		return plainSelect;
 	}
 
+	/**
+	 * A function which deals with the queries with UNION
+	 * @param setOperationList the query as a SetOperationList object containing all the UNION queries
+	 * @return a PlainSelect object with the annotations
+	 * @throws Exception
+	 */
 	private PlainSelect UnionF(SetOperationList setOperationList) throws Exception {
 		ParserHelper pHelper = new ParserHelper();
 
