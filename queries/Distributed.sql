@@ -246,14 +246,3 @@ select s10.public.date.d_year, s10.public.customer.c_nation, sum(ca.ssb_10.lineo
 
 -- 100MB
 select s100.public.date.d_year, s100.public.customer.c_nation, sum(ca.ssb_100.lineorder.lo_revenue - ca.ssb_100.lineorder.lo_supplycost) as profit from s100.public.date, s100.public.customer, s100.public.supplier, s100.public.part, ca.ssb_100.lineorder where ca.ssb_100.lineorder.lo_custkey = s100.public.customer.c_custkey and ca.ssb_100.lineorder.lo_suppkey = s100.public.supplier.s_suppkey and ca.ssb_100.lineorder.lo_partkey = s100.public.part.p_partkey and ca.ssb_100.lineorder.lo_orderdate = s100.public.date.d_datekey and s100.public.customer.c_region = 'AMERICA' and s100.public.supplier.s_nation = 'UNITED STATES' and (s100.public.date.d_year = 1997 or s100.public.date.d_year = 1998) and s100.public.part.p_mfgr = 'MFGR#4' group by s100.public.date.d_year, s100.public.customer.c_nation order by s100.public.date.d_year, s100.public.customer.c_nation
-
-
-
-SELECT AB.a
-FROM (
-	SELECT a, b
-	FROM R
-	UNION
-	SELECT c, d
-	FROM S
-) AS AB
