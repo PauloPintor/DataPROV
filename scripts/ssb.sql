@@ -151,3 +151,29 @@ CREATE INDEX ssb_c_city
 
 CREATE INDEX ssb_p_mfgr
     ON part (p_mfgr);
+
+-- CREATE PROVENANCE TOKENS
+DO $$
+DECLARE temprow RECORD;
+DECLARE iterator float4 := 1;  -- we can init at declaration time;
+BEGIN FOR temprow IN
+    SELECT * FROM lineorder
+  LOOP
+    UPDATE lineorder
+    SET PROV = 'L' || iterator
+    WHERE l_orderkey = temprow.l_orderkey and l_linenumber = temprow.l_linenumber;
+    iterator := iterator + 1;
+  END LOOP;
+END; $$
+
+UPDATE customer
+SET prov = 'C' || customer.c_custkey;
+
+UPDATE part
+SET prov = 'P' || part.p_partkey;
+
+UPDATE supplier
+SET prov = 'S' || supplier.s_suppkey;
+
+UPDATE date
+SET prov = 'D' || supplier.d_datekey;

@@ -7,7 +7,6 @@ import com.generic.Helpers.PostgresHelper;
 import com.generic.Helpers.TrinoHelper;
 import com.generic.Parser.Parser;
 import com.generic.ResultProcess.ResultProcess;
-import com.ibm.icu.util.LocaleMatcher.Result;
 
 public class AppManager {
     private String database;

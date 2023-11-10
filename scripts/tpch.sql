@@ -182,3 +182,48 @@ CREATE INDEX IDX_NATION_REGIONKEY ON NATION (N_REGIONKEY);
 CREATE INDEX IDX_LINEITEM_SHIPDATE ON LINEITEM (L_SHIPDATE, L_DISCOUNT, L_QUANTITY);
 
 CREATE INDEX IDX_ORDERS_ORDERDATE ON ORDERS (O_ORDERDATE);
+
+-- Create the provenance tokens
+DO $$
+DECLARE temprow RECORD;
+DECLARE iterator float4 := 1;  -- we can init at declaration time;
+BEGIN FOR temprow IN
+    SELECT * FROM partsupp
+  LOOP
+    UPDATE partsupp
+    SET PROV = 'PS' || iterator
+    WHERE ps_partkey = temprow.ps_partkey and ps_suppkey = temprow.ps_suppkey;
+    iterator := iterator + 1;
+  END LOOP;
+END; $$
+
+DO $$
+DECLARE temprow RECORD;
+DECLARE iterator float4 := 1;  -- we can init at declaration time;
+BEGIN FOR temprow IN
+    SELECT * FROM lineitem
+  LOOP
+    UPDATE lineitem
+    SET PROV = 'L' || iterator
+    WHERE l_orderkey = temprow.l_orderkey and l_linenumber = temprow.l_linenumber;
+    iterator := iterator + 1;
+  END LOOP;
+END; $$
+
+UPDATE customer
+SET prov = 'C' || customer.c_custkey;
+
+UPDATE nation
+SET prov = 'N' || nation.n_nationkey;
+
+UPDATE orders
+SET prov = 'O' || orders.o_orderkey;
+
+UPDATE part
+SET prov = 'P' || part.p_partkey;
+
+UPDATE region
+SET prov = 'R' || region.r_regionkey;
+
+UPDATE supplier
+SET prov = 'S' || supplier.s_suppkey;
