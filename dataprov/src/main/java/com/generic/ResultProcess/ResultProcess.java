@@ -5,22 +5,15 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import org.matheclipse.core.eval.ExprEvaluator;
 import org.matheclipse.core.expression.F;
-import org.matheclipse.core.expression.S;
 import org.matheclipse.core.interfaces.IExpr;
-
-import com.google.common.collect.BiMap;
-import com.google.common.collect.HashBiMap;
 
 public class ResultProcess {
 	List<LinkedHashMap<String, Object>> result = new ArrayList<LinkedHashMap<String, Object>>();
@@ -32,20 +25,13 @@ public class ResultProcess {
 		ResultSetMetaData rsmd = _result.getMetaData();
 		int columnsNumber = rsmd.getColumnCount();
 
-		//RETIRAR
-		int provLen = 0;
-		int provCount = 0;
 		while (_result.next()) {
 			LinkedHashMap<String, Object> row = new LinkedHashMap<>();
-			provCount++;
 			for (int i = 1; i <= columnsNumber; i++) {
 				
-				//System.out.print(rsmd.getColumnName(i) + " (" + rsmd.getColumnTypeName(i) + ") ");
 				if(rsmd.getColumnName(i).toLowerCase().equals("prov"))
 				{
-					//System.out.println(_result.getString(rsmd.getColumnName(i)));
-					String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("x","\u2297");
-					provLen += prov.length();
+					String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("\u2297","x").replaceAll("\u2295", "+");
 					row.put("how", prov);
 					row.put("why", processWhy(prov));
 				}	
@@ -53,14 +39,12 @@ public class ResultProcess {
 				{
 					//TODO deal with the problem of the same column name
 					Object columnValue = _result.getObject(rsmd.getColumnName(i));
-					//System.out.println(columnValue);
 					row.put(rsmd.getColumnName(i), columnValue);
 				}
 			}
 
 			result.add(row);
 		}
-		System.out.println(provLen/provCount);
 	}
 
 	public List<LinkedHashMap<String, Object>> getResult() {
@@ -68,16 +52,13 @@ public class ResultProcess {
 	}
 
 	public void printResult(){
-		// Get the column headers and their maximum widths
 		LinkedHashMap<String, Integer> columnWidths = getColumnWidths(result);
 
-		// Print the table headers
 		for (String column : columnWidths.keySet()) {
 			System.out.format("%-" + columnWidths.get(column) + "s | ", column);
 		}
 		System.out.println();
 
-		// Print the table data
 		for (LinkedHashMap<String, Object> row : result) {
 			for (String column : columnWidths.keySet()) {
 				Object value = row.get(column);
@@ -104,28 +85,24 @@ public class ResultProcess {
 
 	private String processWhy(String prov) {
 		String why = "";
-		Pattern pattern = Pattern.compile("\u2297\\s*\\d+(\\.\\d+([Ee][+-]?\\d+)?)?\\s*");
+		Pattern pattern = Pattern.compile("\\+\\s*\\d+(\\.\\d+([Ee][+-]?\\d+)?)?\\s*");
         Matcher matcher = pattern.matcher(prov);
         StringBuffer sb = new StringBuffer();
         while (matcher.find()) {
             matcher.appendReplacement(sb, "");
         }
         matcher.appendTail(sb);
-        //prov = sb.toString();
-		
+       
 		// Regular expression pattern to match words containing ':'
         String regex = "\\w+:[\\w:]+";
         
-        // Create a Pattern object
         pattern = Pattern.compile(regex);
         
-        // Create a Matcher object
         matcher = pattern.matcher(sb.toString());
         
 		int i = 0;
-		//BiMap<String, String> mapTokens = HashBiMap.create();
+		
 		HashMap<String, String> mapTokens = new HashMap<String, String>();
-
 
 		String mathResult = "";
 		prov = sb.toString();
@@ -173,6 +150,5 @@ public class ResultProcess {
 		}		
 
 		return "{"+why+"}";
-
 	}
 }

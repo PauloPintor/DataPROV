@@ -24,12 +24,32 @@ To generate the data for both benchmarks it is possible to use tools available o
 The queries used in the experimental evaluation are available in the "queries" folder.
 
 ## EXAMPLE
+Below is an example of a query (TPC-H / Query 4) and the new query with the transformations made by the solution.
 
 ```sql
-select orders.o_orderpriority, count(*) as order_count from orders where orders.o_orderdate >= date '1993-07-01' and orders.o_orderdate < date '1993-07-01' + interval '3' month and exists ( select * from lineitem where lineitem.l_orderkey = orders.o_orderkey and lineitem.l_commitdate < lineitem.l_receiptdate ) group by orders.o_orderpriority order by orders.o_orderpriority
+SELECT orders.o_orderpriority, count(*) as order_count 
+FROM orders 
+WHERE orders.o_orderdate >= date '1993-07-01' 
+  AND orders.o_orderdate < date '1993-07-01' + interval '3' month 
+  AND EXISTS ( SELECT * 
+  			   FROM lineitem 
+			   WHERE lineitem.l_orderkey = orders.o_orderkey 
+			     AND lineitem.l_commitdate < lineitem.l_receiptdate) 
+GROUP BY orders.o_orderpriority 
+ORDER BY orders.o_orderpriority
 
-// APPLYING THE RULES 
+// APPLYING THE RULES TO OBTAIN HOW-PROVENANCE
+SELECT orders.o_orderpriority, count(*) AS order_count, STRING_AGG('orders:' || orders.prov|| ' ⊗ ' || nestedT0.prov || ' . ' || CAST(1 as varchar), ' ⊕ ' ORDER BY orders.o_orderpriority) AS prov 
+FROM orders JOIN (SELECT orders.o_orderkey, 
+				  LISTAGG(C0.prov , ' ⊕ ') WITHIN GROUP ORDER BY orders.o_orderkey AS prov 
+				  FROM orders JOIN 
+				  	(SELECT lineitem.l_orderkey, 'lineitem:' || lineitem.prov AS prov 
+					 FROM lineitem 
+					 WHERE lineitem.l_commitdate < lineitem.l_receiptdate
+					) AS C0 ON C0.l_orderkey = orders.o_orderkey 
+				  GROUP BY orders.o_orderkey
+				) AS nestedT0 ON orders.o_orderkey = nestedT0.l_orderkey 
+WHERE orders.o_orderdate >= DATE '1993-03-01' AND orders.o_orderdate < DATE '1993-03-01' + INTERVAL '3' month 
+GROUP BY orders.o_orderpriority ORDER BY orders.o_orderpriority
 
-sql`SELECT 1`
-// passes
 ```
