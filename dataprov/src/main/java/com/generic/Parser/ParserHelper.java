@@ -96,31 +96,89 @@ public class ParserHelper {
 		return tableName1.equals(tableName2) && ((alias1 == null && alias2 == null) || alias1.equals(alias2)) || tableName1.equals(alias2) || tableName2.equals(alias1);
 	}
 
+	public boolean areColumnsEquals(Column col1, Column col2) {
+		// Compare the table names
+		String colName1 = col1.getColumnName();
+		String colName2 = col2.getColumnName();
+
+		String tableName1 = col1.getTable() != null ? col1.getTable().getName() : "";
+        String tableName2 = col2.getTable() != null ? col2.getTable().getName() : "";
+        
+		// Compare the table aliases (if any)
+		String alias1 = col1.getName(true);
+		String alias2 = col1.getName(true);
+
+		// Check if the names and aliases match
+		return colName1.equals(colName2) && ((alias1 == null && alias2 == null) || alias1.equals(alias2)) || tableName1.equals(alias2) || tableName2.equals(alias1);
+	}
+
 	public List<Table> extractJoinTables(PlainSelect plainSelect ) {
         List<Table> joinTables = new ArrayList<>();
 
-        try {
-            // First, add the table from the main "FROM" clause
-            FromItem mainFromItem = plainSelect.getFromItem();
-            if (mainFromItem instanceof Table) {
-                joinTables.add((Table) mainFromItem);
-            }
+		// First, add the table from the main "FROM" clause
+		FromItem mainFromItem = plainSelect.getFromItem();
+		if (mainFromItem instanceof Table) {
+			joinTables.add((Table) mainFromItem);
+		}else if(mainFromItem instanceof SubSelect){
+			SubSelect subSelect = (SubSelect) mainFromItem;
+			joinTables.add(new Table(subSelect.getAlias().getName()));
+		}
 
-            // Then, iterate over the join clauses and add join tables
-            if (plainSelect.getJoins() != null) {
-                for (Join join : plainSelect.getJoins()) {
-                    FromItem joinFromItem = join.getRightItem();
-                    if (joinFromItem instanceof Table) {
-                        joinTables.add((Table) joinFromItem);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
+		// Then, iterate over the join clauses and add join tables
+		if (plainSelect.getJoins() != null) {
+			for (Join join : plainSelect.getJoins()) {
+				FromItem joinFromItem = join.getRightItem();
+				if (joinFromItem instanceof Table) {
+					joinTables.add((Table) joinFromItem);
+				}else if(joinFromItem instanceof SubSelect){
+					SubSelect subSelect = (SubSelect) joinFromItem;
+					joinTables.add(new Table(subSelect.getAlias().getName()));
+				}
+				
+			}
+		}
+    
         return joinTables;
     }
+
+	public List<Expression> equiJoins(List<Expression> expressions, Table table, String alias){
+		List<Expression> newExpressions = new ArrayList<Expression>();
+		for(Expression expression : expressions){
+			EqualsTo _equalsTo = null;
+			if(!(expression instanceof EqualsTo)){
+				if(expression instanceof GreaterThan){
+					GreaterThan greaterThan = (GreaterThan) expression;
+					_equalsTo = new EqualsTo(greaterThan.getRightExpression(), greaterThan.getLeftExpression());
+				}else if(expression instanceof MinorThan){
+					MinorThan minorThan = (MinorThan) expression;
+					_equalsTo = new EqualsTo(minorThan.getRightExpression(), minorThan.getLeftExpression());
+				}else if(expression instanceof GreaterThanEquals){
+					GreaterThanEquals greaterThanEquals = (GreaterThanEquals) expression;
+					_equalsTo = new EqualsTo(greaterThanEquals.getRightExpression(), greaterThanEquals.getLeftExpression());
+				}else if(expression instanceof MinorThanEquals){
+					MinorThanEquals minorThanEquals = (MinorThanEquals) expression;
+					_equalsTo = new EqualsTo(minorThanEquals.getRightExpression(), minorThanEquals.getLeftExpression());
+				}else if(expression instanceof NotEqualsTo){
+					NotEqualsTo notEqualsTo = (NotEqualsTo) expression;
+					_equalsTo = new EqualsTo(notEqualsTo.getRightExpression(), notEqualsTo.getLeftExpression());
+				}
+			}else{
+				_equalsTo = (EqualsTo) expression;
+			}
+
+			ParserHelper parserHelper = new ParserHelper();
+			Column column = (Column) _equalsTo.getLeftExpression();
+			if(parserHelper.areTablesEqual(column.getTable(),table)){
+				newExpressions.add(new EqualsTo(_equalsTo.getRightExpression(), new Column().withColumnName(column.getColumnName()).withTable(new Table(alias))));
+			}else{
+				 column = (Column) _equalsTo.getRightExpression();
+				 newExpressions.add(new EqualsTo(new Column().withColumnName(column.getColumnName()).withTable(new Table(alias)), _equalsTo.getRightExpression()));
+
+			}
+			
+		}
+		return newExpressions;		
+	}
 
 	/**
      * The function generates a String with the a SQL function to aggregegate values. For instance, in PostgreSQL is 'string_agg', for Trino is 'listaGG'. The expression is the column to be aggregated, the separator is the character to separate the values and the orderByColumn is the column to order the values.
@@ -171,6 +229,8 @@ public class ParserHelper {
 			Column column = (Column) selectExpressionItem.getExpression();
 			return column.getFullyQualifiedName();			
 		}else if(selectExpressionItem.getExpression() instanceof Function){
+			return "1";
+		}else if(selectExpressionItem.getExpression() instanceof Multiplication){
 			return "1";
 		}else{
 			throw new Exception("The first column in the projection is not a column or a function");

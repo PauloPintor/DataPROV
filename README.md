@@ -53,3 +53,6 @@ WHERE orders.o_orderdate >= DATE '1993-03-01' AND orders.o_orderdate < DATE '199
 GROUP BY orders.o_orderpriority ORDER BY orders.o_orderpriority
 
 ```
+
+## ACKNOWLEDGMENTS
+This project was carried out as part of a research grant awarded by the Portuguese public agency for science, technology and innovation FCT - Foundation for Science and Technology - under the reference 2021.06773.BD. This work is partially funded by National Funds through the FCT under the Scientific Employment Stimulus - Institutional Call - CEECIN  - ST/00051/2018, and in the context of the projects UIDB/04524/2020 and UIDB/00127/2020.

@@ -45,6 +45,12 @@ public class ParserExpression {
 		this.joinExp = expressions;
 	}
 
+	public void setJoinExpressions(Expression expression){
+		if(joinExp == null)
+			this.joinExp = new ArrayList<Expression>();
+		this.joinExp.add(expression);
+	}
+
 	public int getJoinExpSize(){
 		return this.joinExp.size();
 	} 
