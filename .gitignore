@@ -32,3 +32,8 @@ genericprovenance/bin/
 dataprov/src/main/java/com/generic/Parser/_Parser.java
 genericprovenance/bin/.settings/org.eclipse.jdt.core.prefs
 dataprov/src/main/java/com/generic/Dataprov/TestApp.java
+.idea/.gitignore
+.idea/GenericProvenance.iml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml

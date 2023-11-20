@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 
 import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.AnyComparisonExpression;
+import net.sf.jsqlparser.expression.AnyType;
 import net.sf.jsqlparser.expression.BinaryExpression;
 import net.sf.jsqlparser.expression.CaseExpression;
 import net.sf.jsqlparser.expression.DoubleValue;
@@ -26,9 +27,11 @@ import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
 import net.sf.jsqlparser.expression.operators.relational.ExistsExpression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.expression.operators.relational.GreaterThan;
+import net.sf.jsqlparser.expression.operators.relational.GreaterThanEquals;
 import net.sf.jsqlparser.expression.operators.relational.InExpression;
 import net.sf.jsqlparser.expression.operators.relational.IsNullExpression;
 import net.sf.jsqlparser.expression.operators.relational.MinorThan;
+import net.sf.jsqlparser.expression.operators.relational.MinorThanEquals;
 import net.sf.jsqlparser.expression.operators.relational.NotEqualsTo;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
@@ -173,12 +176,14 @@ public class ParserVisitors {
 		private List<ParserExpression> parserExpressions;
 		private Expression newWhere = null;
 		private Expression _newJoin = null;
-		private Table _joinTable = null;
+		private List<Column> _columns = null;
+		//private Table _joinTable = null;
 		private boolean isInAndExpression = false;
 		private boolean isInOrExpression = false;
 
 		public WhereVisitor(){
 			parserExpressions = new ArrayList<>();
+			_columns = new ArrayList<>();
 		}
 
 		public PlainSelect identifyOperators(PlainSelect plainSelect){
@@ -391,14 +396,12 @@ public class ParserVisitors {
 				
 				pe.setSelect(_subSelect);
 				pe.setJoinTable(columnsInvolved.getJoinTable());
-				pe.setJoinExpressions(ph.changeToEquals(columnsInvolved.getExpressions(), _table,"nestedT" + count));
+				pe.setJoinExpressions(ph.equiJoins(columnsInvolved.getExpressions(), _table,"nestedT" + count));
 
 				parserExpressions.add(pe);
 
 				count++;
 			}					
-
-			super.visit(existsExpression);
 		}
 
 		@Override
@@ -591,7 +594,7 @@ public class ParserVisitors {
 
 				Table _table = columnsInvolved.getJoinTable();
 
-				if(_table == null)
+				if(_table == null && anyExpression.getAnyType() != AnyType.ALL)
 				{
 					// Create a new SubSelect
 					SubSelect subSelect = new SubSelect();
@@ -609,16 +612,21 @@ public class ParserVisitors {
 					plainSelect.setGroupByElement(newGroupByElement);
 
 					pe.setSelect(subSelect);
-					pe.setJoinTable(_joinTable);
+					pe.setJoinTable(_columns.get(0).getTable());
 					pe.setJoinExpressions(_newJoin);
 				}else{
 					PlainSelect _outerJoin = new PlainSelect();
+					_table = _table == null ? _columns.get(0).getTable() : _table;
 					_outerJoin.setFromItem(_table);
 					Join newJoin = new Join();
 					
 					List<SelectItem> selectItems = new ArrayList<>();
 					for(Column c : columnsInvolved.getCorrelatedColums())
 						selectItems.add(new SelectExpressionItem(c));
+
+					for(Column c : _columns)
+						selectItems.add(new SelectExpressionItem(c));
+
 					_outerJoin.setSelectItems(selectItems);
 
 					// Create a new SubSelect
@@ -640,7 +648,7 @@ public class ParserVisitors {
 					// Set the PlainSelect as the subquery
 					subSelect.setSelectBody(plainSelect);
 					subSelect.setAlias(new Alias("C" + count));
-					newJoin.setRightItem (subSelect);
+					newJoin.setRightItem(subSelect);
 					newJoin.setLeft(false);
 					newJoin.setOuter(false);
 						
@@ -662,8 +670,9 @@ public class ParserVisitors {
 					_subSelect.setAlias(new Alias("nestedT" + count));
 					
 					pe.setSelect(_subSelect);
-					pe.setJoinTable(columnsInvolved.getJoinTable());
-					pe.setJoinExpressions(ph.equiJoins(columnsInvolved.getExpressions(), _table,"nestedT" + count));
+					pe.setJoinTable(_table);
+
+					pe.setJoinExpressions(ph.equiJoins(_joinExp, _table,"nestedT" + count));
 				}
 
 
@@ -695,7 +704,7 @@ public class ParserVisitors {
 				ParserExpression pe = new ParserExpression();
 				
 
-				Table _table = columnsInvolved.getJoinTable() == null ? _joinTable : columnsInvolved.getJoinTable();
+				Table _table = columnsInvolved.getJoinTable() == null ? _columns.get(0).getTable() : columnsInvolved.getJoinTable();
 
 				// Create a new SubSelect
 				SubSelect newSubSelect = new SubSelect();
@@ -793,6 +802,7 @@ public class ParserVisitors {
 		@Override
 		public void visit(GreaterThan greaterThan){
 			 if(greaterThan.getRightExpression() instanceof AnyComparisonExpression || greaterThan.getLeftExpression() instanceof AnyComparisonExpression){
+
 				SubSelect subSelect = (SubSelect) ((AnyComparisonExpression) greaterThan.getRightExpression()).getSubSelect();
 				PlainSelect plainSelect = (PlainSelect) subSelect.getSelectBody();
 				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
@@ -811,16 +821,41 @@ public class ParserVisitors {
 				if(greaterThan.getRightExpression() instanceof AnyComparisonExpression){
 					_newJoin = new GreaterThan();
 					Column column2 = (Column) greaterThan.getLeftExpression();
-					_joinTable = column2.getTable();
+					
+					_columns.add(column2);
 					((BinaryExpression) _newJoin).setLeftExpression(greaterThan.getLeftExpression());
-					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));					
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));
+					
+					if(((AnyComparisonExpression) greaterThan.getRightExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = greaterThan;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, greaterThan);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, greaterThan);
+					}
+						
+					
 				}else if(greaterThan.getLeftExpression() instanceof AnyComparisonExpression){
 					_newJoin = new GreaterThan();
 					Column column2 = (Column) greaterThan.getRightExpression();
-					_joinTable = column2.getTable();
+					_columns.add(column2);
 					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
 					((BinaryExpression) _newJoin).setRightExpression(greaterThan.getRightExpression());
+
+					if(((AnyComparisonExpression) greaterThan.getLeftExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = greaterThan;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, greaterThan);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, greaterThan);
+					}
 				}
+
+				
 			}else if(greaterThan.getRightExpression() instanceof SubSelect || greaterThan.getLeftExpression() instanceof SubSelect){
 				PlainSelect plainSelect = null;
 				if(greaterThan.getRightExpression() instanceof SubSelect){
@@ -840,7 +875,7 @@ public class ParserVisitors {
 
 					_newJoin = new GreaterThan();
 					Column column2 = (Column) greaterThan.getLeftExpression();
-					_joinTable = column2.getTable();
+					_columns.add(column2);
 					
 					((BinaryExpression) _newJoin).setLeftExpression(greaterThan.getLeftExpression());
 					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));	
@@ -861,7 +896,7 @@ public class ParserVisitors {
 					}
 					_newJoin = new GreaterThan();
 					Column column2 = (Column) greaterThan.getRightExpression();
-					_joinTable = column2.getTable();
+					_columns.add(column2);
 					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
 					((BinaryExpression) _newJoin).setRightExpression(greaterThan.getRightExpression());
 				}
@@ -878,6 +913,577 @@ public class ParserVisitors {
 			super.visit(greaterThan);	
 		}
 
+		@Override
+		public void visit(GreaterThanEquals greaterThan){
+			 if(greaterThan.getRightExpression() instanceof AnyComparisonExpression || greaterThan.getLeftExpression() instanceof AnyComparisonExpression){
+
+				SubSelect subSelect = (SubSelect) ((AnyComparisonExpression) greaterThan.getRightExpression()).getSubSelect();
+				PlainSelect plainSelect = (PlainSelect) subSelect.getSelectBody();
+				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+				Column column = null;
+
+				if(selectExpressionItem.getExpression() instanceof Column)
+						column = (Column) selectExpressionItem.getExpression();
+				else{
+					if(selectExpressionItem.getAlias() == null){
+						selectExpressionItem.setAlias(new Alias("_col1"));
+						column = new Column(new Table("C"+count), "_col1");
+					}else
+						column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+				}
+				
+				if(greaterThan.getRightExpression() instanceof AnyComparisonExpression){
+					_newJoin = new GreaterThanEquals();
+					Column column2 = (Column) greaterThan.getLeftExpression();
+					
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(greaterThan.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));
+					
+					if(((AnyComparisonExpression) greaterThan.getRightExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = greaterThan;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, greaterThan);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, greaterThan);
+					}
+						
+					
+				}else if(greaterThan.getLeftExpression() instanceof AnyComparisonExpression){
+					_newJoin = new GreaterThanEquals();
+					Column column2 = (Column) greaterThan.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(greaterThan.getRightExpression());
+
+					if(((AnyComparisonExpression) greaterThan.getLeftExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = greaterThan;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, greaterThan);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, greaterThan);
+					}
+				}
+
+				
+			}else if(greaterThan.getRightExpression() instanceof SubSelect || greaterThan.getLeftExpression() instanceof SubSelect){
+				PlainSelect plainSelect = null;
+				if(greaterThan.getRightExpression() instanceof SubSelect){
+					plainSelect = (PlainSelect) ((SubSelect) greaterThan.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+
+					_newJoin = new GreaterThanEquals();
+					Column column2 = (Column) greaterThan.getLeftExpression();
+					_columns.add(column2);
+					
+					((BinaryExpression) _newJoin).setLeftExpression(greaterThan.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));	
+				}
+				else{
+					plainSelect = (PlainSelect) ((SubSelect) greaterThan.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+					_newJoin = new GreaterThanEquals();
+					Column column2 = (Column) greaterThan.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(greaterThan.getRightExpression());
+				}
+
+			}else{
+					if(newWhere == null)
+						newWhere = greaterThan;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, greaterThan);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, greaterThan);
+			}
+			super.visit(greaterThan);	
+		}
+
+		@Override
+		public void visit(MinorThan minorThan){
+			 if(minorThan.getRightExpression() instanceof AnyComparisonExpression || minorThan.getLeftExpression() instanceof AnyComparisonExpression){
+
+				SubSelect subSelect = (SubSelect) ((AnyComparisonExpression) minorThan.getRightExpression()).getSubSelect();
+				PlainSelect plainSelect = (PlainSelect) subSelect.getSelectBody();
+				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+				Column column = null;
+
+				if(selectExpressionItem.getExpression() instanceof Column)
+						column = (Column) selectExpressionItem.getExpression();
+				else{
+					if(selectExpressionItem.getAlias() == null){
+						selectExpressionItem.setAlias(new Alias("_col1"));
+						column = new Column(new Table("C"+count), "_col1");
+					}else
+						column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+				}
+				
+				if(minorThan.getRightExpression() instanceof AnyComparisonExpression){
+					_newJoin = new MinorThan();
+					Column column2 = (Column) minorThan.getLeftExpression();
+					
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(minorThan.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));
+					
+					if(((AnyComparisonExpression) minorThan.getRightExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = minorThan;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, minorThan);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, minorThan);
+					}
+						
+					
+				}else if(minorThan.getLeftExpression() instanceof AnyComparisonExpression){
+					_newJoin = new MinorThan();
+					Column column2 = (Column) minorThan.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(minorThan.getRightExpression());
+
+					if(((AnyComparisonExpression) minorThan.getLeftExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = minorThan;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, minorThan);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, minorThan);
+					}
+				}
+
+				
+			}else if(minorThan.getRightExpression() instanceof SubSelect || minorThan.getLeftExpression() instanceof SubSelect){
+				PlainSelect plainSelect = null;
+				if(minorThan.getRightExpression() instanceof SubSelect){
+					plainSelect = (PlainSelect) ((SubSelect) minorThan.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+
+					_newJoin = new MinorThan();
+					Column column2 = (Column) minorThan.getLeftExpression();
+					_columns.add(column2);
+					
+					((BinaryExpression) _newJoin).setLeftExpression(minorThan.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));	
+				}
+				else{
+					plainSelect = (PlainSelect) ((SubSelect) minorThan.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+					_newJoin = new MinorThan();
+					Column column2 = (Column) minorThan.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(minorThan.getRightExpression());
+				}
+
+			}else{
+					if(newWhere == null)
+						newWhere = minorThan;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, minorThan);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, minorThan);
+			}
+			super.visit(minorThan);	
+		}
+
+		@Override
+		public void visit(MinorThanEquals minorThan){
+			 if(minorThan.getRightExpression() instanceof AnyComparisonExpression || minorThan.getLeftExpression() instanceof AnyComparisonExpression){
+
+				SubSelect subSelect = (SubSelect) ((AnyComparisonExpression) minorThan.getRightExpression()).getSubSelect();
+				PlainSelect plainSelect = (PlainSelect) subSelect.getSelectBody();
+				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+				Column column = null;
+
+				if(selectExpressionItem.getExpression() instanceof Column)
+						column = (Column) selectExpressionItem.getExpression();
+				else{
+					if(selectExpressionItem.getAlias() == null){
+						selectExpressionItem.setAlias(new Alias("_col1"));
+						column = new Column(new Table("C"+count), "_col1");
+					}else
+						column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+				}
+				
+				if(minorThan.getRightExpression() instanceof AnyComparisonExpression){
+					_newJoin = new MinorThanEquals();
+					Column column2 = (Column) minorThan.getLeftExpression();
+					
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(minorThan.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));
+					
+					if(((AnyComparisonExpression) minorThan.getRightExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = minorThan;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, minorThan);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, minorThan);
+					}
+						
+					
+				}else if(minorThan.getLeftExpression() instanceof AnyComparisonExpression){
+					_newJoin = new MinorThanEquals();
+					Column column2 = (Column) minorThan.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(minorThan.getRightExpression());
+
+					if(((AnyComparisonExpression) minorThan.getLeftExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = minorThan;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, minorThan);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, minorThan);
+					}
+				}
+
+				
+			}else if(minorThan.getRightExpression() instanceof SubSelect || minorThan.getLeftExpression() instanceof SubSelect){
+				PlainSelect plainSelect = null;
+				if(minorThan.getRightExpression() instanceof SubSelect){
+					plainSelect = (PlainSelect) ((SubSelect) minorThan.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+
+					_newJoin = new MinorThanEquals();
+					Column column2 = (Column) minorThan.getLeftExpression();
+					_columns.add(column2);
+					
+					((BinaryExpression) _newJoin).setLeftExpression(minorThan.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));	
+				}
+				else{
+					plainSelect = (PlainSelect) ((SubSelect) minorThan.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+					_newJoin = new MinorThanEquals();
+					Column column2 = (Column) minorThan.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(minorThan.getRightExpression());
+				}
+
+			}else{
+					if(newWhere == null)
+						newWhere = minorThan;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, minorThan);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, minorThan);
+			}
+			super.visit(minorThan);	
+		}
+
+		@Override
+		public void visit(EqualsTo equalsTo){
+			 if(equalsTo.getRightExpression() instanceof AnyComparisonExpression || equalsTo.getLeftExpression() instanceof AnyComparisonExpression){
+
+				SubSelect subSelect = (SubSelect) ((AnyComparisonExpression) equalsTo.getRightExpression()).getSubSelect();
+				PlainSelect plainSelect = (PlainSelect) subSelect.getSelectBody();
+				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+				Column column = null;
+
+				if(selectExpressionItem.getExpression() instanceof Column)
+						column = (Column) selectExpressionItem.getExpression();
+				else{
+					if(selectExpressionItem.getAlias() == null){
+						selectExpressionItem.setAlias(new Alias("_col1"));
+						column = new Column(new Table("C"+count), "_col1");
+					}else
+						column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+				}
+				
+				if(equalsTo.getRightExpression() instanceof AnyComparisonExpression){
+					_newJoin = new EqualsTo();
+					Column column2 = (Column) equalsTo.getLeftExpression();
+					
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(equalsTo.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));
+					
+					if(((AnyComparisonExpression) equalsTo.getRightExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = equalsTo;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, equalsTo);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, equalsTo);
+					}
+						
+					
+				}else if(equalsTo.getLeftExpression() instanceof AnyComparisonExpression){
+					_newJoin = new EqualsTo();
+					Column column2 = (Column) equalsTo.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(equalsTo.getRightExpression());
+
+					if(((AnyComparisonExpression) equalsTo.getLeftExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = equalsTo;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, equalsTo);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, equalsTo);
+					}
+				}
+
+				
+			}else if(equalsTo.getRightExpression() instanceof SubSelect || equalsTo.getLeftExpression() instanceof SubSelect){
+				PlainSelect plainSelect = null;
+				if(equalsTo.getRightExpression() instanceof SubSelect){
+					plainSelect = (PlainSelect) ((SubSelect) equalsTo.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+
+					_newJoin = new EqualsTo();
+					Column column2 = (Column) equalsTo.getLeftExpression();
+					_columns.add(column2);
+					
+					((BinaryExpression) _newJoin).setLeftExpression(equalsTo.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));	
+				}
+				else{
+					plainSelect = (PlainSelect) ((SubSelect) equalsTo.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+					_newJoin = new EqualsTo();
+					Column column2 = (Column) equalsTo.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(equalsTo.getRightExpression());
+				}
+
+			}else{
+					if(newWhere == null)
+						newWhere = equalsTo;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, equalsTo);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, equalsTo);
+			}
+			super.visit(equalsTo);	
+		}
+
+		@Override
+		public void visit(NotEqualsTo equalsTo){
+			 if(equalsTo.getRightExpression() instanceof AnyComparisonExpression || equalsTo.getLeftExpression() instanceof AnyComparisonExpression){
+
+				SubSelect subSelect = (SubSelect) ((AnyComparisonExpression) equalsTo.getRightExpression()).getSubSelect();
+				PlainSelect plainSelect = (PlainSelect) subSelect.getSelectBody();
+				SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+				Column column = null;
+
+				if(selectExpressionItem.getExpression() instanceof Column)
+						column = (Column) selectExpressionItem.getExpression();
+				else{
+					if(selectExpressionItem.getAlias() == null){
+						selectExpressionItem.setAlias(new Alias("_col1"));
+						column = new Column(new Table("C"+count), "_col1");
+					}else
+						column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+				}
+				
+				if(equalsTo.getRightExpression() instanceof AnyComparisonExpression){
+					_newJoin = new NotEqualsTo();
+					Column column2 = (Column) equalsTo.getLeftExpression();
+					
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(equalsTo.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));
+					
+					if(((AnyComparisonExpression) equalsTo.getRightExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = equalsTo;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, equalsTo);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, equalsTo);
+					}
+						
+					
+				}else if(equalsTo.getLeftExpression() instanceof AnyComparisonExpression){
+					_newJoin = new NotEqualsTo();
+					Column column2 = (Column) equalsTo.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(equalsTo.getRightExpression());
+
+					if(((AnyComparisonExpression) equalsTo.getLeftExpression()).getAnyType() == AnyType.ALL){
+						if(newWhere == null)
+							newWhere = equalsTo;
+						else 
+							if (isInAndExpression)
+								newWhere = new AndExpression(newWhere, equalsTo);
+							else if (isInOrExpression)
+								newWhere = new OrExpression(newWhere, equalsTo);
+					}
+				}
+
+				
+			}else if(equalsTo.getRightExpression() instanceof SubSelect || equalsTo.getLeftExpression() instanceof SubSelect){
+				PlainSelect plainSelect = null;
+				if(equalsTo.getRightExpression() instanceof SubSelect){
+					plainSelect = (PlainSelect) ((SubSelect) equalsTo.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+
+					_newJoin = new NotEqualsTo();
+					Column column2 = (Column) equalsTo.getLeftExpression();
+					_columns.add(column2);
+					
+					((BinaryExpression) _newJoin).setLeftExpression(equalsTo.getLeftExpression());
+					((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), column.getColumnName()));	
+				}
+				else{
+					plainSelect = (PlainSelect) ((SubSelect) equalsTo.getRightExpression()).getSelectBody();
+					SelectExpressionItem selectExpressionItem = (SelectExpressionItem) plainSelect.getSelectItems().get(0);
+					Column column = null;
+
+					if(selectExpressionItem.getExpression() instanceof Column)
+						 column = (Column) selectExpressionItem.getExpression();
+					else{
+						if(selectExpressionItem.getAlias() == null){
+							selectExpressionItem.setAlias(new Alias("_col1"));
+							column = new Column(new Table("C"+count), "_col1");
+						}else
+							column = new Column(new Table("C"+count), selectExpressionItem.getAlias().getName());
+					}
+					_newJoin = new NotEqualsTo();
+					Column column2 = (Column) equalsTo.getRightExpression();
+					_columns.add(column2);
+					((BinaryExpression) _newJoin).setLeftExpression(new Column(new Table("C"+count), column.getColumnName()));
+					((BinaryExpression) _newJoin).setRightExpression(equalsTo.getRightExpression());
+				}
+
+			}else{
+					if(newWhere == null)
+						newWhere = equalsTo;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, equalsTo);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, equalsTo);
+			}
+			super.visit(equalsTo);	
+		}
+		
+
 		public List<ParserExpression> getParserExpressions() {
 			return parserExpressions;
 		}
@@ -886,6 +1492,7 @@ public class ParserVisitors {
 			return newWhere;
 		}
 	}
+
 
 	private static class ColumnsInvolved extends ExpressionVisitorAdapter {
 		private List<Table> tables;

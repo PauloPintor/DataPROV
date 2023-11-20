@@ -169,10 +169,10 @@ public class ParserHelper {
 			ParserHelper parserHelper = new ParserHelper();
 			Column column = (Column) _equalsTo.getLeftExpression();
 			if(parserHelper.areTablesEqual(column.getTable(),table)){
-				newExpressions.add(new EqualsTo(_equalsTo.getRightExpression(), new Column().withColumnName(column.getColumnName()).withTable(new Table(alias))));
+				newExpressions.add(new EqualsTo(column, new Column().withColumnName(column.getColumnName()).withTable(new Table(alias))));
 			}else{
 				 column = (Column) _equalsTo.getRightExpression();
-				 newExpressions.add(new EqualsTo(new Column().withColumnName(column.getColumnName()).withTable(new Table(alias)), _equalsTo.getRightExpression()));
+				 newExpressions.add(new EqualsTo(new Column().withColumnName(column.getColumnName()).withTable(new Table(alias)), column));
 
 			}
 			
