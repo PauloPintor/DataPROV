@@ -292,7 +292,7 @@ public class Parser {
 				if(expressionItem.getAlias() != null && expressionItem.getAlias().getName() == "prov")
 				{
 					Column column = (Column) expressionItem.getExpression();
-					expressionItem.setExpression(new Column(pHelper.getAggFunction(column.toString() + " " +aggFunction, '\u2295', firstColumn, dbname)));
+					expressionItem.setExpression(new Column("'(' ||"+pHelper.getAggFunction(column.toString() + " " +aggFunction, '\u2295', firstColumn, dbname)+"|| ')'"));
 				}
 			}
 		}
@@ -396,7 +396,7 @@ public class Parser {
 				if(expressionItem.getAlias() != null && expressionItem.getAlias().getName() == "prov")
 				{
 					Column column = (Column) expressionItem.getExpression();
-					expressionItem.setExpression(new Column(pHelper.getAggFunction(column.toString(), '\u2295', firstColumn, dbname)));
+					expressionItem.setExpression(new Column("'(' ||"+pHelper.getAggFunction(column.toString(), '\u2295', firstColumn, dbname)+"|| ')'"));
 				}else if(expressionItem.getExpression() instanceof Column){
 					groupByElements.addGroupByExpressions(expressionItem.getExpression());
 				}

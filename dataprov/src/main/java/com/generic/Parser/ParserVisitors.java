@@ -295,6 +295,12 @@ public class ParserVisitors {
 
 					PlainSelect plainSelect = (PlainSelect) existExp.getSelectBody();
 
+					if(plainSelect.getWhere() != null){
+						WhereVisitor whereVisitor = new WhereVisitor();
+						if(whereVisitor.getParserExpressions().size() > 0)
+							plainSelect = whereVisitor.identifyOperators(plainSelect);
+					}
+
 					tables = ph.extractJoinTables(plainSelect);
 				
 					ColumnsInvolved columnsInvolved = new ColumnsInvolved(tables);
@@ -341,6 +347,12 @@ public class ParserVisitors {
 				ParserHelper ph = new ParserHelper();
 			
 				PlainSelect plainSelect = (PlainSelect) existExp.getSelectBody();
+
+				if(plainSelect.getWhere() != null){
+					WhereVisitor whereVisitor = new WhereVisitor();
+					if(whereVisitor.getParserExpressions().size() > 0)
+						plainSelect = whereVisitor.identifyOperators(plainSelect);
+				}
 
 				tables = ph.extractJoinTables(plainSelect);
 				
@@ -440,7 +452,8 @@ public class ParserVisitors {
 
 				if(plainSelect.getWhere() != null){
 					WhereVisitor whereVisitor = new WhereVisitor();
-					plainSelect.getWhere().accept(whereVisitor);
+					if(whereVisitor.getParserExpressions().size() > 0)
+						plainSelect = whereVisitor.identifyOperators(plainSelect);
 				}
 
 				tables = ph.extractJoinTables(plainSelect);
@@ -590,7 +603,6 @@ public class ParserVisitors {
 					plainSelect.getWhere().accept(columnsInvolved);
 
 				ParserExpression pe = new ParserExpression();
-				
 
 				Table _table = columnsInvolved.getJoinTable();
 
@@ -703,8 +715,10 @@ public class ParserVisitors {
 
 				ParserExpression pe = new ParserExpression();
 				
-
 				Table _table = columnsInvolved.getJoinTable() == null ? _columns.get(0).getTable() : columnsInvolved.getJoinTable();
+
+				for(Column c : columnsInvolved.getColumns())
+						plainSelect.addSelectItems(new SelectExpressionItem(c));
 
 				// Create a new SubSelect
 				SubSelect newSubSelect = new SubSelect();
@@ -729,7 +743,8 @@ public class ParserVisitors {
 				List<Expression> joinExp = new ArrayList<>();
 				joinExp.add(_newJoin);
 				
-				if(columnsInvolved.getExpressions() != null) joinExp.addAll(columnsInvolved.getExpressions());
+				if(columnsInvolved.getExpressions() != null) 
+					joinExp.addAll(columnsInvolved.getExpressions());
 
 				pe.setSelect(newSubSelect);
 				pe.setJoinTable(_table);
