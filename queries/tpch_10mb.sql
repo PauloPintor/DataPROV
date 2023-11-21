@@ -64,7 +64,7 @@ select sum(lineitem.l_extendedprice* (1 - lineitem.l_discount)) as revenue from 
 -- Q20
 select supplier.s_name, supplier.s_address from supplier, nation where supplier.s_suppkey in ( select partsupp.ps_suppkey from partsupp where partsupp.ps_partkey in ( select part.p_partkey from part where part.p_name like 'white%' ) and partsupp.ps_availqty > ( select 0.5 * sum(lineitem.l_quantity) from lineitem where lineitem.l_partkey = partsupp.ps_partkey and lineitem.l_suppkey = partsupp.ps_suppkey and lineitem.l_shipdate >= date '1994-01-01' and lineitem.l_shipdate < date '1994-01-01' + interval '1' year ) ) and supplier.s_nationkey = nation.n_nationkey and nation.n_name = 'INDIA' order by supplier.s_name;
 
--- Q2
+-- Q21
 select supplier.s_name, count(*) as numwait from supplier, lineitem l1, orders, nation where supplier.s_suppkey = l1.l_suppkey and orders.o_orderkey = l1.l_orderkey and orders.o_orderstatus = 'F' and l1.l_receiptdate > l1.l_commitdate and exists ( select * from lineitem l2 where l2.l_orderkey = l1.l_orderkey and l2.l_suppkey <> l1.l_suppkey ) and not exists ( select * from lineitem l3 where l3.l_orderkey = l1.l_orderkey and l3.l_suppkey <> l1.l_suppkey and l3.l_receiptdate > l3.l_commitdate ) and supplier.s_nationkey = nation.n_nationkey and nation.n_name = 'ETHIOPIA' group by supplier.s_name order by numwait desc, supplier.s_name;
 
 -- Q22 not supported by the current version of the system

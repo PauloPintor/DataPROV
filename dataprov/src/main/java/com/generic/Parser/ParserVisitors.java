@@ -177,7 +177,7 @@ public class ParserVisitors {
 		private Expression newWhere = null;
 		private Expression _newJoin = null;
 		private List<Column> _columns = null;
-		//private Table _joinTable = null;
+		private List<Table> mainQueryTables = null;
 		private boolean isInAndExpression = false;
 		private boolean isInOrExpression = false;
 
@@ -186,8 +186,16 @@ public class ParserVisitors {
 			_columns = new ArrayList<>();
 		}
 
+		public WhereVisitor(List<Table> mainQueryTables){
+			parserExpressions = new ArrayList<>();
+			_columns = new ArrayList<>();
+			this.mainQueryTables = mainQueryTables;
+		}
+
 		public PlainSelect identifyOperators(PlainSelect plainSelect){
-			WhereVisitor whereVisitor = new WhereVisitor();
+			ParserHelper ph = new ParserHelper();
+			mainQueryTables = ph.extractJoinTables(plainSelect);
+			WhereVisitor whereVisitor = new WhereVisitor(mainQueryTables);
 			plainSelect.getWhere().accept(whereVisitor);
 			
 			if(whereVisitor.getParserExpressions().size() > 0)
@@ -208,75 +216,87 @@ public class ParserVisitors {
 
 			for(ParserExpression pe : whereVisitor.getParserExpressions())
 			{
-				for(Table table : joinTables){
-					if(ph.areTablesEqual(pe.getJoinTable(),table)){
-						if(!(toRemove.size() > 0 && ph.areTablesEqual(toRemove.get(toRemove.size()-1),table))){
-							if(_plainSelect.getFromItem() == null){
-								_plainSelect.setFromItem(table);
+				if(pe.getJoinTable() == null){
+					Join newJoin = new Join();
+					newJoin.setRightItem(pe.getSelect());
+					newJoin.setSimple(true);
+					joins.addAll(plainSelect.getJoins());
+					joins.add(newJoin);
+
+					plainSelect.setJoins(joins);
+					plainSelect.setWhere(new AndExpression(whereVisitor.getNewWhere(), ph.buildAndExpression(pe.getWhereExpressions())));
+				}else{
+					for(Table table : joinTables){
+						if(ph.areTablesEqual(pe.getJoinTable(),table)){
+							if(!(toRemove.size() > 0 && ph.areTablesEqual(toRemove.get(toRemove.size()-1),table))){
+								if(_plainSelect.getFromItem() == null){
+									_plainSelect.setFromItem(table);
+								}else{
+									Join tempJoin = new Join();
+									tempJoin.setRightItem(table);
+									tempJoin.setSimple(true);
+									joins.add(tempJoin);
+									_plainSelect.addJoins(joins);
+								}
+
+								toRemove.add(table);
+							}			
+							
+							Join newJoin = new Join();
+							
+							newJoin.setRightItem(pe.getSelect());
+
+							if(pe.HasWhereExp()){
+								newJoin.setLeft(true);
+								newJoin.setOuter(false);
 							}else{
-								Join tempJoin = new Join();
-								tempJoin.setRightItem(table);
-								tempJoin.setSimple(true);
-								joins.add(tempJoin);
-								_plainSelect.addJoins(joins);
+								newJoin.setLeft(false);
+								newJoin.setOuter(false);
 							}
 
-							toRemove.add(table);
-						}			
-						
-						Join newJoin = new Join();
-						
-						newJoin.setRightItem(pe.getSelect());
+							List<Expression> joinExp = new ArrayList<>();
+							joinExp.add(ph.buildAndExpression(pe.getJoinExpression()));
+							newJoin.setOnExpressions(joinExp);
+							joins.add(newJoin);
 
-						if(pe.HasWhereExp()){
-							newJoin.setLeft(true);
-							newJoin.setOuter(false);
-						}else{
-							newJoin.setLeft(false);
-							newJoin.setOuter(false);
+							if(pe.HasWhereExp())
+								expressions.addAll(pe.getWhereExpressions());
+							break;
 						}
-
-						List<Expression> joinExp = new ArrayList<>();
-						joinExp.add(ph.buildAndExpression(pe.getJoinExpression()));
-						newJoin.setOnExpressions(joinExp);
-						joins.add(newJoin);
-
-						if(pe.HasWhereExp())
-							expressions.addAll(pe.getWhereExpressions());
-						break;
-					}
-				}					
-			}
-			joinTables.removeAll(toRemove);
-			if(joinTables.size() > 0){
-				for(Table table : joinTables){
-					Join newJoin = new Join();
-					newJoin.setRightItem(table);
-					newJoin.setSimple(true);
-					joins.add(newJoin);
-					
-				}
-			}
-
-			_plainSelect.addJoins(joins);
-			plainSelect.setFromItem(_plainSelect.getFromItem());
-			plainSelect.setJoins(_plainSelect.getJoins());
-
-			plainSelect.setWhere(whereVisitor.getNewWhere());
-			
-			if(expressions.size() > 0){
-				Expression where = plainSelect.getWhere();
+					}					
 				
-				if(where == null){
-					where = expressions.get(0);
-					expressions.remove(0);
-				}
-				else 
-					for(Expression exp : expressions){
-						where = new AndExpression(where, exp);
+					joinTables.removeAll(toRemove);
+					if(joinTables.size() > 0){
+						for(Table table : joinTables){
+							Join newJoin = new Join();
+							newJoin.setRightItem(table);
+							newJoin.setSimple(true);
+							joins.add(newJoin);
+							
+						}
 					}
 
-				plainSelect.setWhere(where);
+					_plainSelect.addJoins(joins);
+					plainSelect.setFromItem(_plainSelect.getFromItem());
+					plainSelect.setJoins(_plainSelect.getJoins());
+
+					plainSelect.setWhere(whereVisitor.getNewWhere());
+					
+					if(expressions.size() > 0){
+						Expression where = plainSelect.getWhere();
+						
+						if(where == null){
+							where = expressions.get(0);
+							expressions.remove(0);
+						}
+						else 
+							for(Expression exp : expressions){
+								where = new AndExpression(where, exp);
+							}
+
+						plainSelect.setWhere(where);
+					}
+				}
 			}
 			return plainSelect;
 		}
@@ -373,6 +393,11 @@ public class ParserVisitors {
 				PlainSelect _outerJoin = new PlainSelect();
 
 				Table _table = columnsInvolved.getJoinTable();
+
+				for(Table t : mainQueryTables){
+					if(t.getAlias() != null && t.getAlias().getName().equals(_table.getName()))
+						_table = t;
+				}
 
 				_outerJoin.setFromItem(_table);
 				Join newJoin = new Join();
@@ -596,6 +621,12 @@ public class ParserVisitors {
 			
 				PlainSelect plainSelect = (PlainSelect) existExp.getSelectBody();
 
+				if(plainSelect.getWhere() != null){
+						WhereVisitor whereVisitor = new WhereVisitor();
+						if(whereVisitor.getParserExpressions().size() > 0)
+							plainSelect = whereVisitor.identifyOperators(plainSelect);
+				}
+
 				tables = ph.extractJoinTables(plainSelect);
 				
 				ColumnsInvolved columnsInvolved = new ColumnsInvolved(tables);
@@ -703,8 +734,9 @@ public class ParserVisitors {
 				PlainSelect plainSelect = (PlainSelect) subSelect.getSelectBody();
 
 				if(plainSelect.getWhere() != null){
-					WhereVisitor whereVisitor = new WhereVisitor();
-					plainSelect.getWhere().accept(whereVisitor);
+						WhereVisitor whereVisitor = new WhereVisitor();
+						if(whereVisitor.getParserExpressions().size() > 0)
+							plainSelect = whereVisitor.identifyOperators(plainSelect);
 				}
 
 				tables = ph.extractJoinTables(plainSelect);
@@ -714,11 +746,9 @@ public class ParserVisitors {
 					plainSelect.getWhere().accept(columnsInvolved);
 
 				ParserExpression pe = new ParserExpression();
-				
-				Table _table = columnsInvolved.getJoinTable() == null ? _columns.get(0).getTable() : columnsInvolved.getJoinTable();
 
 				for(Column c : columnsInvolved.getColumns())
-						plainSelect.addSelectItems(new SelectExpressionItem(c));
+					plainSelect.addSelectItems(new SelectExpressionItem(c));
 
 				// Create a new SubSelect
 				SubSelect newSubSelect = new SubSelect();
@@ -741,64 +771,21 @@ public class ParserVisitors {
 					plainSelect.setGroupByElement(newGroupByElement);
 
 				List<Expression> joinExp = new ArrayList<>();
-				joinExp.add(_newJoin);
 				
 				if(columnsInvolved.getExpressions() != null) 
 					joinExp.addAll(columnsInvolved.getExpressions());
+				joinExp.add(_newJoin);
 
 				pe.setSelect(newSubSelect);
-				pe.setJoinTable(_table);
-				pe.setJoinExpressions(joinExp);
+				pe.setJoinTable(null);
+				pe.setWhereExpressions(joinExp);
 
 				parserExpressions.add(pe);
 
 				count++;
 			}		
 		}
-/*
-		@Override
-		public void visit(AndExpression andExpression) {
-			if (andExpression.getRightExpression() instanceof ExistsExpression || andExpression.getLeftExpression() instanceof ExistsExpression) {
-				if(andExpression.getRightExpression() instanceof ExistsExpression){
-					if(newWhere == null)
-						newWhere = andExpression.getLeftExpression();
-					else 
-						newWhere = new AndExpression(newWhere, andExpression.getLeftExpression());
-				}else if(andExpression.getLeftExpression() instanceof ExistsExpression){
-					if(newWhere == null)
-						newWhere = andExpression.getRightExpression();
-					else 
-						newWhere = new AndExpression(newWhere, andExpression.getRightExpression());
-				}
-			}else if(andExpression.getRightExpression() instanceof NotExpression || andExpression.getLeftExpression() instanceof NotExpression){
-				if(andExpression.getRightExpression() instanceof NotExpression){
-					if(newWhere == null)
-						newWhere = andExpression.getLeftExpression();
-					else 
-						newWhere = new AndExpression(newWhere, andExpression.getLeftExpression());
-				}else if(andExpression.getLeftExpression() instanceof NotExpression){
-					if(newWhere == null)
-						newWhere = andExpression.getRightExpression();
-					else 
-						newWhere = new AndExpression(newWhere, andExpression.getRightExpression());
-				}
-			}else if(andExpression.getRightExpression() instanceof InExpression || andExpression.getLeftExpression() instanceof InExpression){
-				if(andExpression.getRightExpression() instanceof InExpression){
-					if(newWhere == null)
-						newWhere = andExpression.getLeftExpression();
-					else 
-						newWhere = new AndExpression(newWhere, andExpression.getLeftExpression());
-				}else if(andExpression.getLeftExpression() instanceof InExpression){
-					if(newWhere == null)
-						newWhere = andExpression.getRightExpression();
-					else 
-						newWhere = new AndExpression(newWhere, andExpression.getRightExpression());
-				}
-			}
 
-			super.visit(andExpression);	
-		}
-*/
 		@Override
 		public void visit(AndExpression andExpression) {
 			isInAndExpression = true;
@@ -1533,7 +1520,7 @@ public class ParserVisitors {
 			return isOuterTable;
 		}
 
-		private void createExpression(Expression exp1, Expression exp2){
+		private void createExpression(Expression exp1, Expression exp2, Object comparison){
 			Column col1 = (Column) exp1;
 			Column col2 = (Column) exp2;
 
@@ -1542,7 +1529,11 @@ public class ParserVisitors {
 			col2.setTable(new Table("C"+count));
 
 			tableJoin = col1.getTable();
-			Expression exp = new EqualsTo().withLeftExpression(exp1).withRightExpression(exp2);
+			Expression exp = null;
+			if(comparison instanceof EqualsTo)
+				exp = new EqualsTo().withLeftExpression(exp1).withRightExpression(exp2);
+			else if(comparison instanceof NotEqualsTo)
+				exp = new NotEqualsTo().withLeftExpression(exp1).withRightExpression(exp2);
 
 			expressions.add(exp);
 		}
@@ -1556,14 +1547,14 @@ public class ParserVisitors {
 				
 				if(verifyOuterTable(left))
 				{
-					createExpression(equalsTo.getLeftExpression(), equalsTo.getRightExpression());
+					createExpression(equalsTo.getLeftExpression(), equalsTo.getRightExpression(), equalsTo);
 
 					equalsTo.setLeftExpression(new LongValue(1));
 					equalsTo.setRightExpression(new LongValue(1));
 				}
 				else if(verifyOuterTable(right))
 				{
-					createExpression(equalsTo.getRightExpression(), equalsTo.getLeftExpression());
+					createExpression(equalsTo.getRightExpression(), equalsTo.getLeftExpression(),equalsTo);
 
 					equalsTo.setLeftExpression(new LongValue(1));
 					equalsTo.setRightExpression(new LongValue(1));
@@ -1582,14 +1573,14 @@ public class ParserVisitors {
 				
 				if(verifyOuterTable(left))
 				{
-					createExpression(NoEqualsTo.getLeftExpression(), NoEqualsTo.getRightExpression());
+					createExpression(NoEqualsTo.getLeftExpression(), NoEqualsTo.getRightExpression(), NoEqualsTo);
 					NoEqualsTo.setLeftExpression(new LongValue(0));
 					NoEqualsTo.setRightExpression(new LongValue(1));
 				}
 				else if(verifyOuterTable(right))
 				{
 
-					createExpression(NoEqualsTo.getRightExpression(), NoEqualsTo.getLeftExpression());
+					createExpression(NoEqualsTo.getRightExpression(), NoEqualsTo.getLeftExpression(), NoEqualsTo);
 
 					NoEqualsTo.setLeftExpression(new LongValue(0));
 					NoEqualsTo.setRightExpression(new LongValue(1));

@@ -189,7 +189,7 @@ public class Parser {
 					String rightProv = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
 					provToken = "COALESCE(" + provToken + " || ' \u2297 ' || "+rightProv+", "+rightProv+")";
 				}else{
-                	provToken = provToken + " || ' . ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+                	provToken = provToken + " || ' \u2297 ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
 				}
             }else{
 				SubSelect tempSubSelect = (SubSelect) join.getRightItem();
@@ -335,8 +335,10 @@ public class Parser {
 							newExpressionItem.setAlias(new Alias("MinMaxCol"));
 							newColumn = new Column(newExpressionItem.getAlias().getName());
 							copyNewSelect.addSelectItems(newExpressionItem);
-						}else
+						}else{
 							newColumn = new Column(expressionItem.getAlias().getName());
+							copyNewSelect.addSelectItems(expressionItem);
+						}	
 						
 					}else
 						copyNewSelect.addSelectItems(expressionItem);
@@ -359,8 +361,12 @@ public class Parser {
 		Join newJoin = new Join();
 		newJoin.setSimple(true);
 		newJoin.setRightItem(copySub);
-		newSelect.addJoins(newJoin);
-
+		
+		List<Join> joins = new ArrayList<Join>();
+		joins.addAll(newSelect.getJoins());
+		joins.add(newJoin);
+		newSelect.setJoins(joins);
+		
 		EqualsTo newCondition = new EqualsTo();
 		newCondition.setLeftExpression(minMaxColumn);
 		newCondition.setRightExpression(newColumn);
