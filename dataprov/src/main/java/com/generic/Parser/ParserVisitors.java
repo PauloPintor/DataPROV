@@ -206,16 +206,14 @@ public class ParserVisitors {
 
 		private PlainSelect processingOperators(PlainSelect plainSelect, WhereVisitor whereVisitor){
 			ParserHelper ph = new ParserHelper();
-
-			PlainSelect _plainSelect = new PlainSelect();
-			List<Table> joinTables = ph.extractJoinTables(plainSelect);
-			List<Table> toRemove = new ArrayList<>();
-			List<Join> joins = new ArrayList<>();
-
-			List<Expression> expressions = new ArrayList<>();
+			List<Join> joins = null;
+			List<Expression> expressions = null;
 
 			for(ParserExpression pe : whereVisitor.getParserExpressions())
 			{
+				joins = new ArrayList<>();
+				expressions = new ArrayList<>();
+
 				if(pe.getJoinTable() == null){
 					Join newJoin = new Join();
 					newJoin.setRightItem(pe.getSelect());
@@ -226,59 +224,23 @@ public class ParserVisitors {
 					plainSelect.setJoins(joins);
 					plainSelect.setWhere(new AndExpression(whereVisitor.getNewWhere(), ph.buildAndExpression(pe.getWhereExpressions())));
 				}else{
-					for(Table table : joinTables){
-						if(ph.areTablesEqual(pe.getJoinTable(),table)){
-							if(!(toRemove.size() > 0 && ph.areTablesEqual(toRemove.get(toRemove.size()-1),table))){
-								if(_plainSelect.getFromItem() == null){
-									_plainSelect.setFromItem(table);
-								}else{
-									Join tempJoin = new Join();
-									tempJoin.setRightItem(table);
-									tempJoin.setSimple(true);
-									joins.add(tempJoin);
-									_plainSelect.addJoins(joins);
-								}
-
-								toRemove.add(table);
-							}			
+					if(ph.areTblEqualsTblSelect(pe.getJoinTable(), plainSelect.getFromItem()))
+					{
+						addNewJoin(pe, joins, expressions);
+						
+						if(plainSelect.getJoins() != null)
+							joins.addAll(plainSelect.getJoins());
 							
-							Join newJoin = new Join();
-							
-							newJoin.setRightItem(pe.getSelect());
-
-							if(pe.HasWhereExp()){
-								newJoin.setLeft(true);
-								newJoin.setOuter(false);
-							}else{
-								newJoin.setLeft(false);
-								newJoin.setOuter(false);
+					}else{
+						for(Join j : plainSelect.getJoins()){
+							joins.add(j);
+							if(ph.areTblEqualsTblSelect(pe.getJoinTable(), j.getRightItem())){
+								addNewJoin(pe, joins, expressions);
 							}
-
-							List<Expression> joinExp = new ArrayList<>();
-							joinExp.add(ph.buildAndExpression(pe.getJoinExpression()));
-							newJoin.setOnExpressions(joinExp);
-							joins.add(newJoin);
-
-							if(pe.HasWhereExp())
-								expressions.addAll(pe.getWhereExpressions());
-							break;
-						}
-					}					
-				
-					joinTables.removeAll(toRemove);
-					if(joinTables.size() > 0){
-						for(Table table : joinTables){
-							Join newJoin = new Join();
-							newJoin.setRightItem(table);
-							newJoin.setSimple(true);
-							joins.add(newJoin);
-							
 						}
 					}
 
-					_plainSelect.addJoins(joins);
-					plainSelect.setFromItem(_plainSelect.getFromItem());
-					plainSelect.setJoins(_plainSelect.getJoins());
+					plainSelect.setJoins(joins);
 
 					plainSelect.setWhere(whereVisitor.getNewWhere());
 					
@@ -299,6 +261,29 @@ public class ParserVisitors {
 				}
 			}
 			return plainSelect;
+		}
+
+		private void addNewJoin(ParserExpression pe, List<Join> joins, List<Expression> expressions){
+			ParserHelper ph = new ParserHelper();
+			Join newJoin = new Join();
+							
+			newJoin.setRightItem(pe.getSelect());
+
+			if(pe.HasWhereExp()){
+				newJoin.setLeft(true);
+				newJoin.setOuter(false);
+			}else{
+				newJoin.setLeft(false);
+				newJoin.setOuter(false);
+			}
+
+			List<Expression> joinExp = new ArrayList<>();
+			joinExp.add(ph.buildAndExpression(pe.getJoinExpression()));
+			newJoin.setOnExpressions(joinExp);
+			joins.add(newJoin);
+
+			if(pe.HasWhereExp())
+				expressions.addAll(pe.getWhereExpressions());
 		}
 
 		@Override
@@ -325,6 +310,7 @@ public class ParserVisitors {
 				
 					ColumnsInvolved columnsInvolved = new ColumnsInvolved(tables);
 					plainSelect.getWhere().accept(columnsInvolved);
+					plainSelect.setWhere(columnsInvolved.getNewWhere());
 
 					SelectItem firstSelectItem = plainSelect.getSelectItems().get(0);
 					ParserExpression pe = new ParserExpression();
@@ -799,6 +785,19 @@ public class ParserVisitors {
 
 			super.visit(orExpression);
 
+		}
+
+		@Override
+		public void visit(IsNullExpression isNullExpression){
+			if(newWhere == null)
+				newWhere = isNullExpression;
+			else 
+				if (isInAndExpression)
+					newWhere = new AndExpression(newWhere, isNullExpression);
+				else if (isInOrExpression)
+					newWhere = new OrExpression(newWhere, isNullExpression);
+
+			super.visit(isNullExpression);
 		}
 
 		@Override
@@ -1501,7 +1500,10 @@ public class ParserVisitors {
 		private List<Column> columns;
 		private List<Column> correlatedColums;
 		private List<Expression> expressions;
+		private Expression newWhere = null;
 		private Table tableJoin;
+		private boolean isInAndExpression;
+		private boolean isInOrExpression;
 
 		public ColumnsInvolved(List<Table> tables){
 			this.tables = tables;
@@ -1534,8 +1536,32 @@ public class ParserVisitors {
 				exp = new EqualsTo().withLeftExpression(exp1).withRightExpression(exp2);
 			else if(comparison instanceof NotEqualsTo)
 				exp = new NotEqualsTo().withLeftExpression(exp1).withRightExpression(exp2);
+			else if(comparison instanceof GreaterThan)
+				exp = new GreaterThan().withLeftExpression(exp1).withRightExpression(exp2);
+			else if(comparison instanceof GreaterThanEquals)
+				exp = new GreaterThanEquals().withLeftExpression(exp1).withRightExpression(exp2);
+			else if(comparison instanceof MinorThan)
+				exp = new MinorThan().withLeftExpression(exp1).withRightExpression(exp2);
+			else if(comparison instanceof MinorThanEquals)
+				exp = new MinorThanEquals().withLeftExpression(exp1).withRightExpression(exp2);
 
 			expressions.add(exp);
+		}
+
+
+		@Override
+		public void visit(AndExpression andExpression) {
+			isInAndExpression = true;
+
+			super.visit(andExpression);
+		}
+
+		@Override
+		public void visit(OrExpression orExpression) {
+			isInOrExpression = true;
+
+			super.visit(orExpression);
+
 		}
 
 		@Override
@@ -1549,15 +1575,19 @@ public class ParserVisitors {
 				{
 					createExpression(equalsTo.getLeftExpression(), equalsTo.getRightExpression(), equalsTo);
 
-					equalsTo.setLeftExpression(new LongValue(1));
-					equalsTo.setRightExpression(new LongValue(1));
 				}
 				else if(verifyOuterTable(right))
 				{
 					createExpression(equalsTo.getRightExpression(), equalsTo.getLeftExpression(),equalsTo);
 
-					equalsTo.setLeftExpression(new LongValue(1));
-					equalsTo.setRightExpression(new LongValue(1));
+				}else{
+					if(newWhere == null)
+						newWhere = equalsTo;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, equalsTo);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, equalsTo);
 				}
 				
 			}			
@@ -1574,21 +1604,150 @@ public class ParserVisitors {
 				if(verifyOuterTable(left))
 				{
 					createExpression(NoEqualsTo.getLeftExpression(), NoEqualsTo.getRightExpression(), NoEqualsTo);
-					NoEqualsTo.setLeftExpression(new LongValue(0));
-					NoEqualsTo.setRightExpression(new LongValue(1));
+
 				}
 				else if(verifyOuterTable(right))
 				{
 
 					createExpression(NoEqualsTo.getRightExpression(), NoEqualsTo.getLeftExpression(), NoEqualsTo);
 
-					NoEqualsTo.setLeftExpression(new LongValue(0));
-					NoEqualsTo.setRightExpression(new LongValue(1));
+				}else{
+					if(newWhere == null)
+						newWhere = NoEqualsTo;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, NoEqualsTo);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, NoEqualsTo);
 				}
 				
 			}
 
 			super.visit(NoEqualsTo);
+		}
+
+		@Override
+		public void visit(GreaterThan greaterThan){
+			if(greaterThan.getLeftExpression() instanceof Column && greaterThan.getRightExpression() instanceof Column){
+				Column left = (Column) greaterThan.getLeftExpression();
+				Column right = (Column) greaterThan.getRightExpression();
+				
+				if(verifyOuterTable(left))
+				{
+					createExpression(greaterThan.getLeftExpression(), greaterThan.getRightExpression(), greaterThan);
+				}
+				else if(verifyOuterTable(right))
+				{
+					createExpression(greaterThan.getRightExpression(), greaterThan.getLeftExpression(), greaterThan);
+				}else{
+					if(newWhere == null)
+						newWhere = greaterThan;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, greaterThan);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, greaterThan);
+				}
+				
+			}
+			super.visit(greaterThan);	
+		}
+
+		@Override
+		public void visit(GreaterThanEquals greaterThan){
+			if(greaterThan.getLeftExpression() instanceof Column && greaterThan.getRightExpression() instanceof Column){
+				Column left = (Column) greaterThan.getLeftExpression();
+				Column right = (Column) greaterThan.getRightExpression();
+				
+				if(verifyOuterTable(left))
+				{
+					createExpression(greaterThan.getLeftExpression(), greaterThan.getRightExpression(), greaterThan);
+				}
+				else if(verifyOuterTable(right))
+				{
+					createExpression(greaterThan.getRightExpression(), greaterThan.getLeftExpression(), greaterThan);
+				}else{
+					if(newWhere == null)
+						newWhere = greaterThan;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, greaterThan);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, greaterThan);
+				}
+				
+			}
+			super.visit(greaterThan);	
+		}
+
+		@Override
+		public void visit(MinorThan minorThan){
+			if(minorThan.getLeftExpression() instanceof Column && minorThan.getRightExpression() instanceof Column){
+				Column left = (Column) minorThan.getLeftExpression();
+				Column right = (Column) minorThan.getRightExpression();
+				
+				if(verifyOuterTable(left))
+				{
+					createExpression(minorThan.getLeftExpression(), minorThan.getRightExpression(), minorThan);
+				}
+				else if(verifyOuterTable(right))
+				{
+					createExpression(minorThan.getRightExpression(), minorThan.getLeftExpression(), minorThan);
+				}else{
+					if(newWhere == null)
+						newWhere = minorThan;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, minorThan);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, minorThan);
+				}
+				
+			}
+			super.visit(minorThan);	
+		}
+
+		@Override
+		public void visit(MinorThanEquals minorThan){
+			if(minorThan.getLeftExpression() instanceof Column && minorThan.getRightExpression() instanceof Column){
+				Column left = (Column) minorThan.getLeftExpression();
+				Column right = (Column) minorThan.getRightExpression();
+				
+				if(verifyOuterTable(left))
+				{
+					createExpression(minorThan.getLeftExpression(), minorThan.getRightExpression(), minorThan);
+				}
+				else if(verifyOuterTable(right))
+				{
+					createExpression(minorThan.getRightExpression(), minorThan.getLeftExpression(), minorThan);
+				}else{
+					if(newWhere == null)
+						newWhere = minorThan;
+					else 
+						if (isInAndExpression)
+							newWhere = new AndExpression(newWhere, minorThan);
+						else if (isInOrExpression)
+							newWhere = new OrExpression(newWhere, minorThan);
+				}
+				
+			}
+			super.visit(minorThan);	
+		}
+
+		@Override
+		public void visit(IsNullExpression isNullExpression){
+			if(newWhere == null)
+				newWhere = isNullExpression;
+			else 
+				if (isInAndExpression)
+					newWhere = new AndExpression(newWhere, isNullExpression);
+				else if (isInOrExpression)
+					newWhere = new OrExpression(newWhere, isNullExpression);
+			super.visit(isNullExpression);
+		}
+
+		public Expression getNewWhere() {
+			return newWhere;
 		}
 
 		public List<Expression> getExpressions() {

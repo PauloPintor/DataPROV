@@ -83,6 +83,21 @@ public class ParserHelper {
 		return newExpressions;		
 	}
 
+	public boolean areTblEqualsTblSelect(Table table1, Object table2) {
+
+		if(table2 instanceof Table)
+			return areTablesEqual(table1, (Table) table2);
+		else if(table2 instanceof SubSelect){
+			SubSelect subSelect = (SubSelect) table2;
+			if(subSelect.getAlias() != null)
+				return table1.getName().equals(subSelect.getAlias().getName());
+			else
+				return false;
+		}
+
+		return false;
+	}
+
 	public boolean areTablesEqual(Table table1, Table table2) {
 		// Compare the table names
 		String tableName1 = table1.getName();
