@@ -17,8 +17,8 @@ public class AppManager {
     private String password;
     private boolean ssl = false;
 
-    public AppManager(String databse, String databaseURL, String query, boolean withWhy) throws Exception {
-        this.database = databse;
+    public AppManager(String database, String databaseURL, String query, boolean withWhy) throws Exception {
+        this.database = database;
         this.databaseURL = databaseURL;
         this.query = query;
         this.withWhy = withWhy;
