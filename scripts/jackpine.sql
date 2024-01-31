@@ -112,7 +112,7 @@ SELECT sum(ST_Area(geom)) AS area FROM areawater_merge
 
 -- Operation: Buffer, Description: Buffer of polygons
 -- Query: Construct the buffer regions around one mile radius of all polygons in arealm_merge table
-select ST_Buffer(a.geom,5280) from  arealm_merge a
+select ST_Buffer(a.geom,5280) from arealm_merge a
 
 -- Operation: ConvexHull, Description: Convex hull of polygons
 -- Query: Construct the convex hulls of all polygons in arealm merge table

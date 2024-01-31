@@ -2,15 +2,12 @@ package com.generic.Parser;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.Function;
-import net.sf.jsqlparser.expression.LongValue;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
-import net.sf.jsqlparser.expression.operators.relational.ExistsExpression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
@@ -171,7 +168,7 @@ public class Parser {
             Table tempTable = (Table) plainSelect.getFromItem();
 
 			if(!correlated)
-            	provToken = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+            	provToken = tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
         }else{
 			SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
 			tempSubSelect.setSelectBody(addAnnotations(tempSubSelect.getSelectBody(),false));
@@ -208,9 +205,10 @@ public class Parser {
 					provToken = provToken + "|| ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov";
 
 			}
-		
+			
 		}
 
+		provToken = "'("+provToken+" || ')'";
 		SelectExpressionItem newColumn = new SelectExpressionItem();
 		
 		newColumn.setExpression(new net.sf.jsqlparser.schema.Column(provToken));
@@ -276,10 +274,9 @@ public class Parser {
 	private PlainSelect GroupByF(PlainSelect newSelect) throws Exception {
 		ParserHelper pHelper = new ParserHelper();		
 
+		String aggFunction = "";
 		FunctionProjection funcVisitor = new FunctionProjection();
 		newSelect.getSelectItems().forEach(item -> item.accept(funcVisitor));
-		String aggFunction = "";
-		
 		if(funcVisitor.hasFunction()) aggFunction = funcVisitor.getAggExpression();
 
 		String firstColumn = pHelper.aggFunctionOrderBy(newSelect.getSelectItems().get(0));
@@ -363,7 +360,7 @@ public class Parser {
 		newJoin.setRightItem(copySub);
 		
 		List<Join> joins = new ArrayList<Join>();
-		joins.addAll(newSelect.getJoins());
+		if (newSelect.getJoins() != null) joins.addAll(newSelect.getJoins());
 		joins.add(newJoin);
 		newSelect.setJoins(joins);
 		

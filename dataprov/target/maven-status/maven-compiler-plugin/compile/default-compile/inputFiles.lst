@@ -1,12 +1,16 @@
+/Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Parser/_Parser.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Parser/ParserColumn.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Parser/InvalidParserOperation.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Helpers/ConfigHelper.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Parser/ParserVisitors.java
+/Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Dataprov/TestJavaLinux.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Parser/ParserHelper.java
+/Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Dataprov/AppManager.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Parser/Parser.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Parser/ParserExpression.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Parser/AmbigousParserColumn.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Helpers/PostgresHelper.java
+/Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Dataprov/TestApp.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Parser/ParserTable.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/Dataprov/App.java
 /Users/paulopintor/Documents/GitHub/GenericProvenance/dataprov/src/main/java/com/generic/ResultProcess/ResultProcess.java

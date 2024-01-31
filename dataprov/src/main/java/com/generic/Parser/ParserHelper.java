@@ -6,6 +6,7 @@ import java.util.List;
 import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.Function;
+import net.sf.jsqlparser.expression.operators.arithmetic.Division;
 import net.sf.jsqlparser.expression.operators.arithmetic.Multiplication;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.relational.*;
@@ -223,8 +224,12 @@ public class ParserHelper {
 		if(selectItems.get(0) instanceof SelectExpressionItem){
 			SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItems.get(0);
 			if(selectExpressionItem.getExpression() instanceof Function){
-				result = true;
-			}else if(selectExpressionItem.getExpression() instanceof Multiplication){
+				Function function = (Function) selectExpressionItem.getExpression();
+				if(function.getName().toLowerCase().equals("substring"))
+					result = false;
+				else
+					result = true;
+			}else if(selectExpressionItem.getExpression() instanceof Multiplication || selectExpressionItem.getExpression() instanceof Division){
 				result = true;
 			}
 		}
@@ -246,6 +251,8 @@ public class ParserHelper {
 		}else if(selectExpressionItem.getExpression() instanceof Function){
 			return "1";
 		}else if(selectExpressionItem.getExpression() instanceof Multiplication){
+			return "1";
+		}else if(selectExpressionItem.getExpression() instanceof Division){
 			return "1";
 		}else{
 			throw new Exception("The first column in the projection is not a column or a function");

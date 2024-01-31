@@ -17,6 +17,7 @@ import net.sf.jsqlparser.expression.LongValue;
 import net.sf.jsqlparser.expression.NotExpression;
 import net.sf.jsqlparser.expression.RowConstructor;
 import net.sf.jsqlparser.expression.operators.arithmetic.Addition;
+import net.sf.jsqlparser.expression.operators.arithmetic.Division;
 import net.sf.jsqlparser.expression.operators.arithmetic.Multiplication;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
@@ -62,11 +63,16 @@ public class ParserVisitors {
 
 				if(function.getName().toLowerCase().equals("count")){
 					hasFunction = true;
-					aggExpression = "|| ' . ' || CAST(1 as varchar)";
+					aggExpression += "|| ' .count ' || CAST(1 as varchar)";
 				}else if(function.getName().toLowerCase().equals("sum")){
 					if(hasColumns(function.getParameters())){
 						hasFunction = true;
-						aggExpression += "|| ' . ' || CAST("+function.getParameters().toString()+" as varchar)";
+						aggExpression += "|| ' .sum ' || CAST("+function.getParameters().toString()+" as varchar)";
+					}
+				}else if(function.getName().toLowerCase().equals("avg")){
+					if(hasColumns(function.getParameters())){
+						hasFunction = true;
+						aggExpression += "|| ' .avg ' || CAST("+function.getParameters().toString()+" as varchar)";
 					}
 				}else if(function.getName().toLowerCase().equals("min")){
 					if(hasColumns(function.getParameters())){
@@ -78,7 +84,7 @@ public class ParserVisitors {
 
 						hasFunction = true;
 						minMax = true;
-						aggExpression = "|| ' . ' || CAST("+function.getParameters().toString()+" as varchar)";
+						aggExpression += "|| ' .min ' || CAST("+function.getParameters().toString()+" as varchar)";
 					}
 				}else if(function.getName().toLowerCase().equals("max")){
 					if(hasColumns(function.getParameters())){
@@ -90,21 +96,21 @@ public class ParserVisitors {
 						
 						hasFunction = true;
 						minMax = true;
-						aggExpression = "|| ' . ' || CAST("+function.getParameters().toString()+" as varchar)";
+						aggExpression += "|| ' .max ' || CAST("+function.getParameters().toString()+" as varchar)";
 					}
 				}
 
 			}else if(item.getExpression() instanceof Multiplication){
-				Multiplication multiplication = (Multiplication) item.getExpression();
+				/*Multiplication multiplication = (Multiplication) item.getExpression();
 				
 				if(multiplication.getLeftExpression() instanceof Function){
 					Function function = (Function) multiplication.getLeftExpression();
 					if(function.getName().toLowerCase().equals("count")){
 						hasFunction = true;
-						aggExpression = "1";
+						aggExpression += "1";
 					}else if(function.getName().toLowerCase().equals("sum")){
 						if(hasColumns(function.getParameters())){
-							aggExpression = "("+function.getParameters().toString()+")";
+							aggExpression += "("+function.getParameters().toString()+")";
 							hasFunction = true;
 						}
 					}
@@ -115,21 +121,94 @@ public class ParserVisitors {
 				if(multiplication.getRightExpression() instanceof Function){
 					Function function = (Function) multiplication.getRightExpression();
 					if(function.getName().toLowerCase().equals("count")){
-						aggExpression = aggExpression + "* 1";
+						aggExpression += aggExpression + "* 1";
 						hasFunction = true;
 					}else if(function.getName().toLowerCase().equals("sum")){
 						if(hasColumns(function.getParameters())){
-							aggExpression = aggExpression + "*" + "("+function.getParameters().toString()+")";
+							aggExpression += aggExpression + "*" + "("+function.getParameters().toString()+")";
 							hasFunction = true;
 						}
 					}
-				}else if(multiplication.getLeftExpression() instanceof DoubleValue){
-					aggExpression = aggExpression +"*"+ multiplication.getLeftExpression().toString();
+				}else if(multiplication.getRightExpression() instanceof DoubleValue){
+					aggExpression += aggExpression +"*"+ multiplication.getRightExpression().toString();
+				}*/
+				String tempAggexp = arithmeticFuncs(item.getExpression());
+				if(tempAggexp != ""){
+					hasFunction = true;
+					aggExpression += "|| ' . ' || CAST("+tempAggexp+" as varchar)";
 				}
-
-				aggExpression = "|| ' . ' || CAST("+aggExpression+" as varchar)";
+			}else if(item.getExpression() instanceof Division){
+				String tempAggexp = arithmeticFuncs(item.getExpression());
+				if(tempAggexp != ""){
+					hasFunction = true;
+					aggExpression += "|| ' . ' || CAST("+tempAggexp+" as varchar)";
+				}
 			}
 		}	
+
+		private String arithmeticFuncs(Expression exp){
+			String arithExp = "";
+			boolean _hasFunction = false;
+			if(exp instanceof Division){
+				Division divison = (Division) exp;
+				
+				if(divison.getLeftExpression() instanceof Function){
+					Function function = (Function) divison.getLeftExpression();
+					if(function.getName().toLowerCase().equals("sum")){
+						if(hasColumns(function.getParameters())){
+							arithExp += function.getParameters().toString();
+							_hasFunction = true;
+						}
+					}
+				}else if(divison.getLeftExpression() instanceof Multiplication){
+					arithExp += arithmeticFuncs(divison.getLeftExpression());
+				}else if(divison.getLeftExpression() instanceof DoubleValue){
+					arithExp += divison.getLeftExpression().toString();
+				}
+
+				if(divison.getRightExpression() instanceof Function){
+					Function function = (Function) divison.getRightExpression();
+					if(function.getName().toLowerCase().equals("sum")){
+						if(hasColumns(function.getParameters())){
+							arithExp += "/" + function.getParameters().toString();
+							_hasFunction = true;
+						}
+					}
+				}else if(divison.getRightExpression() instanceof Multiplication){
+					arithExp += arithmeticFuncs(divison.getRightExpression());
+				}else if(divison.getRightExpression() instanceof DoubleValue && _hasFunction){
+					arithExp += "/" + divison.getRightExpression().toString();
+				}
+			}else if(exp instanceof Multiplication){
+				Multiplication multiplication = (Multiplication) exp;
+				
+				if(multiplication.getLeftExpression() instanceof Function){
+					Function function = (Function) multiplication.getLeftExpression();
+	 				if(function.getName().toLowerCase().equals("sum") || function.getName().toLowerCase().equals("avg")){
+						if(hasColumns(function.getParameters())){
+							arithExp += function.getParameters().toString();
+							_hasFunction = true;
+						}
+					}
+				}else if(multiplication.getLeftExpression() instanceof DoubleValue){
+					arithExp += multiplication.getLeftExpression().toString();
+				}
+
+				if(multiplication.getRightExpression() instanceof Function){
+					Function function = (Function) multiplication.getRightExpression();
+					if(function.getName().toLowerCase().equals("sum") || function.getName().toLowerCase().equals("avg")){
+						if(hasColumns(function.getParameters())){
+							arithExp += "*" + function.getParameters().toString();
+							_hasFunction = true;
+						}
+					}
+				}else if(multiplication.getRightExpression() instanceof DoubleValue && _hasFunction){
+					arithExp += "*"+ multiplication.getRightExpression().toString();
+				}
+			}
+
+			return _hasFunction ? arithExp : "";
+		}
 
 		private boolean hasColumns(ExpressionList parameters){
 			for(Expression e : parameters.getExpressions()){
@@ -145,6 +224,9 @@ public class ParserVisitors {
 					ExpressionList expressionList = new ExpressionList();
 					expressionList.addExpressions(multiplication.getLeftExpression(), multiplication.getRightExpression());
 					return hasColumns(expressionList);
+				}else if(e instanceof Function){
+					Function function = (Function) e;
+					return hasColumns(function.getParameters());
 				}
 			}
 			return false;
@@ -204,7 +286,7 @@ public class ParserVisitors {
 			ParserHelper ph = new ParserHelper();
 			List<Join> joins = null;
 			List<Expression> expressions = null;
-
+			plainSelect.setWhere(null);
 			for(ParserExpression pe : whereVisitor.getParserExpressions())
 			{
 				joins = new ArrayList<>();
@@ -244,7 +326,10 @@ public class ParserVisitors {
 
 					plainSelect.setJoins(joins);
 
-					plainSelect.setWhere(whereVisitor.getNewWhere());
+					if(plainSelect.getWhere() == null && whereVisitor.getNewWhere() != null){
+						plainSelect.setWhere(whereVisitor.getNewWhere());
+					}
+					
 					
 					if(expressions.size() > 0){
 						Expression where = plainSelect.getWhere();
@@ -447,7 +532,7 @@ public class ParserVisitors {
 					inColumns.add((Column) inExpression.getRightExpression());
 				}
 					
-			}else{
+			}else if((inExpression.getRightExpression() instanceof SubSelect)){
 				inExp = (SubSelect) inExpression.getRightExpression();
 				if(inExpression.getLeftExpression() instanceof RowConstructor){
 					((RowConstructor) inExpression.getLeftExpression()).getExprList().getExpressions().forEach(e -> {
@@ -459,7 +544,7 @@ public class ParserVisitors {
 				}
 			}
 			
-			if(inExp.getSelectBody() instanceof PlainSelect){
+			if(inExp != null && inExp.getSelectBody() instanceof PlainSelect){
 				List<Table> tables = new ArrayList<>();
 				ParserHelper ph = new ParserHelper();
 			
@@ -513,6 +598,18 @@ public class ParserVisitors {
 							pe.addWhereExpression(notNullExp);
 						}
 
+						for(SelectItem si : plainSelect.getSelectItems()){
+							SelectExpressionItem sei = (SelectExpressionItem) si;
+							Column colWhere = new Column();
+							colWhere.setColumnName(((Column) sei.getExpression()).getColumnName());
+							colWhere.setTable(new Table("C" + count));
+							IsNullExpression notNullExp = new IsNullExpression();
+							notNullExp.setLeftExpression(colWhere);
+							notNullExp.setNot(false);
+							pe.addWhereExpression(notNullExp);
+						}
+
+						/* 
 						for(Column c : inColumns){
 							IsNullExpression notNullExp = new IsNullExpression();
 							Column colWhere = new Column();
@@ -522,6 +619,7 @@ public class ParserVisitors {
 							notNullExp.setNot(false);
 							pe.addWhereExpression(notNullExp);
 						}
+						*/
 					}
 					
 					plainSelect.setGroupByElement(newGroupByElement);
@@ -601,6 +699,14 @@ public class ParserVisitors {
 				parserExpressions.add(pe);
 
 				count++;
+			}else{
+				if(newWhere == null)
+					newWhere = inExpression;
+				else 
+					if (isInAndExpression)
+						newWhere = new AndExpression(newWhere, inExpression);
+					else if (isInOrExpression)
+						newWhere = new OrExpression(newWhere, inExpression);
 			}
 		}
 
@@ -775,9 +881,10 @@ public class ParserVisitors {
 				joinExp.add(_newJoin);
 
 				pe.setSelect(newSubSelect);
+				//pe.setJoinTable(tables.getFirst());
 				pe.setJoinTable(null);
 				pe.setWhereExpressions(joinExp);
-
+				//pe.setJoinExpressions(joinExp);
 				parserExpressions.add(pe);
 
 				count++;
@@ -1818,6 +1925,20 @@ public class ParserVisitors {
 		}
 
 		@Override
+		public void visit(InExpression inExpression){
+			if(newWhere == null)
+				newWhere = inExpression;
+			else 
+				if (isInAndExpression)
+					newWhere = new AndExpression(newWhere, inExpression);
+				else if (isInOrExpression)
+					newWhere = new OrExpression(newWhere, inExpression);
+
+			super.visit(inExpression);
+		}
+
+		/* Perceber em que query é necessário
+		@Override
 		public void visit(Function function){
 			if(newWhere == null)
 				newWhere = function;
@@ -1829,6 +1950,7 @@ public class ParserVisitors {
 
 			super.visit(function);
 		}
+		*/
 
 		public Expression getNewWhere() {
 			return newWhere;

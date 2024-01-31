@@ -17,8 +17,9 @@ import org.matheclipse.core.interfaces.IExpr;
 
 public class ResultProcess {
 	List<LinkedHashMap<String, Object>> result = new ArrayList<LinkedHashMap<String, Object>>();
-
-	public ResultProcess() {
+	boolean why = false;
+	public ResultProcess(boolean why) {
+		this.why = why;
 	}
 
 	public void processing(ResultSet _result) throws SQLException {
@@ -31,9 +32,9 @@ public class ResultProcess {
 				
 				if(rsmd.getColumnName(i).toLowerCase().equals("prov"))
 				{
-					String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("\u2297","x").replaceAll("\u2295", "+");
-					row.put("how", prov);
-					row.put("why", processWhy(prov));
+					//String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("\u2297","x").replaceAll("\u2295", "+");
+					row.put("how", _result.getString(rsmd.getColumnName(i)));
+					if (why) row.put("why", processWhy(_result.getString(rsmd.getColumnName(i))));
 				}	
 				else
 				{
@@ -53,16 +54,23 @@ public class ResultProcess {
 
 	public void printResult(){
 		LinkedHashMap<String, Integer> columnWidths = getColumnWidths(result);
-
+		System.out.println();
+		System.out.println("**************************RESULTS**************************");
+		System.out.println();
+		int totalColumns = columnWidths.keySet().size();
 		for (String column : columnWidths.keySet()) {
-			System.out.format("%-" + columnWidths.get(column) + "s | ", column);
+			if(totalColumns == 1)
+				System.out.format("%-" + (columnWidths.get(column) - 7) + "s", column);
+			else
+				System.out.format("%-" + columnWidths.get(column) + "s | ", column);
+			totalColumns--;
 		}
 		System.out.println();
 
 		for (LinkedHashMap<String, Object> row : result) {
 			for (String column : columnWidths.keySet()) {
 				Object value = row.get(column);
-				System.out.format("%-" + columnWidths.get(column) + "s ", value != null ? value : "");
+				System.out.format("%-" + columnWidths.get(column) + "s | ", value != null ? value : "");
 			}
 			System.out.println();
 		}
@@ -73,11 +81,13 @@ public class ResultProcess {
         LinkedHashMap<String, Integer> columnWidths = new LinkedHashMap<>();
         for (LinkedHashMap<String, Object> row : data) {
             for (String column : row.keySet()) {
-                int width = column.length();
+				Object value = row.get(column);
+                int width = column.length() > value.toString().length() ? column.length() : value.toString().length();
                 if (columnWidths.containsKey(column)) {
                     width = Math.max(width, columnWidths.get(column));
                 }
-                columnWidths.put(column, width);
+				
+				columnWidths.put(column, width);
             }
         }
         return columnWidths;
@@ -85,16 +95,19 @@ public class ResultProcess {
 
 	private String processWhy(String prov) {
 		String why = "";
-		Pattern pattern = Pattern.compile("\\+\\s*\\d+(\\.\\d+([Ee][+-]?\\d+)?)?\\s*");
-        Matcher matcher = pattern.matcher(prov);
-        StringBuffer sb = new StringBuffer();
-        while (matcher.find()) {
-            matcher.appendReplacement(sb, "");
-        }
-        matcher.appendTail(sb);
-       
+
+		//Pattern pattern = Pattern.compile("\\+\\s*\\d+(\\.\\d+([Ee][+-]?\\d+)?)?\\s*");
+		//Pattern pattern = Pattern.compile("\\.(?:sum|avg|ming|max)?\\s+\\d+(\\.\\d+)?\\s*");
+		Pattern pattern = Pattern.compile("\\.(?:sum|avg|ming|max)?sum\\s+\\d+(\\.\\d+)?\\s*");
+		Matcher matcher = pattern.matcher(prov);
+		StringBuffer sb = new StringBuffer();
+		while (matcher.find()) {
+			matcher.appendReplacement(sb, "");
+		}
+		matcher.appendTail(sb);
+		
 		// Regular expression pattern to match words containing ':'
-        String regex = "\\w+:[\\w:]+";
+		String regex = "\\w+:[\\w:]+";
         
         pattern = Pattern.compile(regex);
         
@@ -106,7 +119,8 @@ public class ResultProcess {
 
 		String mathResult = "";
 		prov = sb.toString();
-
+		prov = prov.replaceAll("\u2297",".").replaceAll("\u2295", "+");
+		prov = prov.replaceAll("\\s+(?=\\))", "");;
 		if(prov.indexOf(") .") != -1 || prov.indexOf(". (") != -1)
 		{
 
