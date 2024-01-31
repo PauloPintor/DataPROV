@@ -2,14 +2,14 @@
 A middleware solution to capture data provenance in centralized and distributed environments, using annotations propagation and query rewriting.
 
 ## USAGE	
-The solution receives as parameters the database, database URL, the query to parse and a boolean where the users can indicate if they want the why-provenance (wp) result (default is false) using the following command:
+The solution receives as parameters the database, database URL, and the query to parse. It also has optional parameters: -wp If true, the why-provenance is computed; -t If true, the execution time is computed; -nq If true, the transformed query is printed; -np If true, the provenance is not computed. An example of the command is the following:
 
-    java dataprov.jar -d [DATABASE] -u [DATABASE_URL] -q [QUERY] -wp [TRUE/FALSE - default false]
+    java dataprov.jar -d [DATABASE] -u [DATABASE_URL] -q [QUERY] [-wp [TRUE/FALSE - default false] -t [TRUE/FALSE - default false] -nq [TRUE/FALSE - default false] -np [TRUE/FALSE - default false]]
 
 After the command, it will be asked for the username and password.
 
 ### DATA SOURCES
-Two testing benchmarks, specifically TPC-H and SSB, were utilized during the experiments for our solution. Our "scripts" folder includes all the necessary scripts for index and table creation. Each table features a "prov" column, and we have provided scripts for generating an easily understandable and simple provenance token for testing purposes.
+Three testing benchmarks, specifically TPC-H, SSB and JackPine, were utilized during the experiments for our solution. Our "scripts" folder includes all the necessary scripts for index and table creation. Each table features a "prov" column, and we have provided scripts for generating an easily understandable and simple provenance token for testing purposes.
 
 To generate the data for both benchmarks it is possible to use tools available on their websites.
 
@@ -20,6 +20,10 @@ To generate the data for both benchmarks it is possible to use tools available o
 #### SSB
 
 	https://github.com/Kyligence/ssb-kylin
+
+#### JackPine
+
+	https://github.com/debjyoti385/jackpine
 
 The queries used in the experimental evaluation are available in the "queries" folder.
 
