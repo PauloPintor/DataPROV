@@ -140,6 +140,7 @@ public class Parser {
 			Table tempTable = (Table) plainSelect.getFromItem();
 			
 			prov = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName()) + ".prov";
+			//prov = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName()) + ".prov";
 		}else{
 			SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
 			tempSubSelect.setSelectBody(addAnnotations(tempSubSelect.getSelectBody(),false));
@@ -168,25 +169,32 @@ public class Parser {
             Table tempTable = (Table) plainSelect.getFromItem();
 
 			if(!correlated)
-            	provToken = tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+            	provToken = tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+				//provToken = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
         }else{
 			SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
 			tempSubSelect.setSelectBody(addAnnotations(tempSubSelect.getSelectBody(),false));
-			provToken = tempSubSelect.getAlias() + ".prov";
+			provToken = tempSubSelect.getAlias().getName() + ".prov";
 		}
+		boolean coalesce = false;
 
 		for(Join join : plainSelect.getJoins()) {
 			if(join.getRightItem() instanceof Table){            
                 Table tempTable = (Table) join.getRightItem();
 				if(join.isLeft()){
 					String leftProv = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
-					
-					provToken = "COALESCE(" + provToken + " || ' \u2297 ' || "+leftProv+", "+provToken+")";
+					//String leftProv = (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+					provToken = "COALESCE('(' || " + provToken + " || ' \u2297 ' || "+leftProv+" || ')', '(' ||"+provToken+"|| ')')";
+					coalesce = true;
 				}else if(join.isRight()){
-					String rightProv = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
-					provToken = "COALESCE(" + provToken + " || ' \u2297 ' || "+rightProv+", "+rightProv+")";
+					String rightProv = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+					//String rightProv = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+					provToken = "COALESCE('(' || " + provToken + " || ' \u2297 ' || "+rightProv+" || ')', '( ' || "+rightProv+") || ')')";
+					coalesce = true;
 				}else{
-                	provToken = provToken + " || ' \u2297 ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+                	provToken = provToken + " || ' \u2297 ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+					//provToken = provToken + " || ' \u2297 ' || " +(tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+					//coalesce = false;
 				}
             }else{
 				SubSelect tempSubSelect = (SubSelect) join.getRightItem();
@@ -195,20 +203,31 @@ public class Parser {
 				else
 					tempSubSelect.setSelectBody(addAnnotations(tempSubSelect.getSelectBody(),false));
 			
-				if(join.isLeft())
-					provToken = "COALESCE(" + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov, "+provToken+")";
-				else if(join.isRight())
-					provToken = "COALESCE(" + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov, "+tempSubSelect.getAlias().getName()+".prov)";
-				else if(correlated)
+				if(join.isLeft()){
+					provToken = "COALESCE('(" + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov || ')', '("+provToken+"|| ')')";
+					//provToken = "COALESCE('(' || " + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov || ')', '(' || "+provToken+"|| ')')";
+					coalesce = true;	
+				}
+				else if(join.isRight()){
+					provToken = "COALESCE('(" + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov|| ')', '("+tempSubSelect.getAlias().getName()+".prov || ')')";
+					//provToken = "COALESCE('(' || " + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov|| ')', '(' || "+tempSubSelect.getAlias().getName()+".prov || ')')";
+					coalesce = true;
+				}
+				else if(correlated){
 					provToken = tempSubSelect.getAlias().getName()+".prov";
-				else
+					//coalesce = false;
+				}else{
 					provToken = provToken + "|| ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov";
+					//coalesce = false;
+				}
 
 			}
 			
 		}
 
-		provToken = "'("+provToken+" || ')'";
+		if(!coalesce && !correlated)
+			provToken = "'(' || "+provToken+" || ')'";
+		
 		SelectExpressionItem newColumn = new SelectExpressionItem();
 		
 		newColumn.setExpression(new net.sf.jsqlparser.schema.Column(provToken));
@@ -314,6 +333,7 @@ public class Parser {
 		if(minMaxColumn.getTable() == null) throw new AmbigousParserColumn();
 		Column newColumn = new Column();
 		PlainSelect copyNewSelect = new PlainSelect();
+		List<SelectExpressionItem> restOfColumns = new ArrayList<SelectExpressionItem>();
 
 		for (SelectItem selectItem : newSelect.getSelectItems()) {
 			if (selectItem instanceof SelectExpressionItem) {
@@ -337,8 +357,10 @@ public class Parser {
 							copyNewSelect.addSelectItems(expressionItem);
 						}	
 						
-					}else
+					}else{
 						copyNewSelect.addSelectItems(expressionItem);
+						restOfColumns.add(expressionItem);
+					}
 					
 				}
 			}
@@ -373,6 +395,16 @@ public class Parser {
 			newSelect.setWhere(newCondition);
 		} else {
 			newSelect.setWhere(new AndExpression(currentWhere, newCondition));
+		}
+
+		for(SelectExpressionItem item : restOfColumns){
+			EqualsTo restCondition = new EqualsTo();
+			restCondition.setLeftExpression(item.getExpression());
+			Column restColumn = new Column(((Column)item.getExpression()).getColumnName());
+			restColumn.setTable(new Table("MinMax"));
+			restCondition.setRightExpression(restColumn);
+
+			newSelect.setWhere(new AndExpression(newSelect.getWhere(), restCondition));
 		}
 
 		return newSelect;

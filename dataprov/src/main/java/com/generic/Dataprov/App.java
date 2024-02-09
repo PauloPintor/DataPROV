@@ -57,7 +57,7 @@ public class App
 				throw new IllegalArgumentException("The query (-q) argument cannot be empty");
 			}
 			
-			AppManager app = new AppManager(database, databaseURL, query, withWhy,withTrasnform, withTime);
+			AppManager app = new AppManager(database, databaseURL, query, withWhy,withTrasnform, withTime, noProvenance);
 		}
     }
 

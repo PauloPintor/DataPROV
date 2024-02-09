@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import net.sf.jsqlparser.expression.Alias;
+import net.sf.jsqlparser.expression.CaseExpression;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.Function;
+import net.sf.jsqlparser.expression.operators.arithmetic.Addition;
 import net.sf.jsqlparser.expression.operators.arithmetic.Division;
 import net.sf.jsqlparser.expression.operators.arithmetic.Multiplication;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
@@ -254,6 +256,10 @@ public class ParserHelper {
 			return "1";
 		}else if(selectExpressionItem.getExpression() instanceof Division){
 			return "1";
+		}else if(selectExpressionItem.getExpression() instanceof Addition){
+				return "1";
+		}else if(selectExpressionItem.getExpression() instanceof CaseExpression){
+			return "1";
 		}else{
 			throw new Exception("The first column in the projection is not a column or a function");
 		}
@@ -276,10 +282,13 @@ public class ParserHelper {
 					
 					SelectExpressionItem expressionItem = (SelectExpressionItem) selectItem;
 					if(expressionItem.getExpression() instanceof Function){
+						Column _column = null;
 						if(expressionItem.getAlias() == null){
 							expressionItem.setAlias(new Alias("func_"+count));
+							_column = new Column(new Table("_un"), "func_"+count);
+						}else{
+							_column = new Column(new Table("_un"), expressionItem.getAlias().getName());
 						}
-						Column _column = new Column(new Table("_un"), "func_"+count);
 						result.add(new SelectExpressionItem(_column));  
 					}else
 					{

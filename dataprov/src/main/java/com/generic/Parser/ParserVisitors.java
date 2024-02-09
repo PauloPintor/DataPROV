@@ -1631,7 +1631,7 @@ public class ParserVisitors {
 		
 
 		public List<ParserExpression> getParserExpressions() {
-			return parserExpressions;
+			return parserExpressions.reversed();
 		}
 
 		public Expression getNewWhere() {
