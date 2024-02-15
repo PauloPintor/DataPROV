@@ -169,7 +169,7 @@ public class Parser {
             Table tempTable = (Table) plainSelect.getFromItem();
 
 			if(!correlated)
-            	provToken = tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+            	provToken = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
 				//provToken = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
         }else{
 			SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
