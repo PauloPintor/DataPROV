@@ -4,13 +4,13 @@
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>com.generic.provenance</groupId>
-  <artifactId>genericprovenance</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <groupId>com.generic</groupId>
+  <artifactId>dataprov</artifactId>
+  <version>1.1</version>
 
-  <name>genericprovenance</name>
+  <name>dataprov</name>
   <!-- FIXME change it to the project's website -->
-  <url>http://www.example.com</url>
+  <url>https://github.com/PauloPintor/DataPROV</url>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -74,7 +74,7 @@
 	<dependency>
 		<groupId>org.postgresql</groupId>
 		<artifactId>postgresql</artifactId>
-		<version>42.6.0</version>
+		<version>42.7.2</version>
 	</dependency>
 <!-- https://mvnrepository.com/artifact/commons-validator/commons-validator -->
 <dependency>
