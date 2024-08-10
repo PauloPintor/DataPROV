@@ -1,10 +1,15 @@
-package com.generic.ResultProcess;
+package com.ResultProcess;
 
 import java.io.BufferedReader;
-import java.io.FileNotFoundException;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -16,30 +21,24 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.matheclipse.core.eval.ExprEvaluator;
-import org.matheclipse.core.expression.F;
-import org.matheclipse.core.interfaces.IExpr;
-
 public class ResultProcess {
-	List<LinkedHashMap<String, Object>> result = new ArrayList<LinkedHashMap<String, Object>>();
+    List<LinkedHashMap<String, Object>> result = new ArrayList<LinkedHashMap<String, Object>>();
 	boolean why = false;
 	public ResultProcess(boolean why) {
 		this.why = why;
 	}
 
-	public void processing(ResultSet _result) throws SQLException {
+	public void processing(ResultSet _result) throws SQLException, IOException {
 		ResultSetMetaData rsmd = _result.getMetaData();
 		int columnsNumber = rsmd.getColumnCount();
-		double howlength = 0;
+
 		while (_result.next()) {
 			LinkedHashMap<String, Object> row = new LinkedHashMap<>();
 			for (int i = 1; i <= columnsNumber; i++) {
 				
 				if(rsmd.getColumnName(i).toLowerCase().equals("prov"))
 				{
-					//String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("\u2297","x").replaceAll("\u2295", "+");
 					String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("\\b(\\w+)\\s*:\\(", "(");
-					//howlength += prov.length();
 					row.put("how", prov);
 					if (why) row.put("why", processWhy(prov));
 				}	
@@ -54,9 +53,6 @@ public class ResultProcess {
 			result.add(row);
 			
 		}
-		//System.out.println("howlength: " + howlength);
-		//System.out.println("result.size(): " + result.size());
-		//System.out.println(howlength/result.size());
 	}
 
 	public List<LinkedHashMap<String, Object>> getResult() {
@@ -104,23 +100,13 @@ public class ResultProcess {
         return columnWidths;
     }
 
-	private String processWhy(String prov) {
+	private String processWhy(String prov) throws IOException {
 		String why = "";
 
-		//Pattern pattern = Pattern.compile("\\+\\s*\\d+(\\.\\d+([Ee][+-]?\\d+)?)?\\s*");
-		//Pattern pattern = Pattern.compile("\\.(?:sum|avg|ming|max)?\\s+\\d+(\\.\\d+)?\\s*");
-		//Pattern pattern = Pattern.compile("\\.(?:sum|avg|min|max)?sum\\s+\\d+(\\.\\d+)?\\s*");
-		/*Pattern pattern = Pattern.compile("\\.(min|avg|sum|max|count)\\s+\\d+(\\.\\d+)?");
-		Matcher matcher = pattern.matcher(prov);
-		StringBuffer sb = new StringBuffer();
-		while (matcher.find()) {
-			matcher.appendReplacement(sb, "");
-		}
-		matcher.appendTail(sb);
-		*/
-		prov = prov.replaceAll("\\b(\\w+)\\s*:\\(", "(");
+
 		prov = prov.replaceAll("\\.(min|avg|sum|max|count)\\s+\\d+(\\.\\d+)?", "");
 		prov = prov.replaceAll("\\. (\\d+(\\.\\d+)?)", "");
+
 		// Regular expression pattern to match words containing ':'
 		String regex = "\\w+:[\\w:]+";
         
@@ -149,28 +135,23 @@ public class ResultProcess {
 				}
 			} 
 			
-			//ExprEvaluator util = new ExprEvaluator();
-			//IExpr expr = util.eval(prov);
-			//IExpr result = util.eval(F.Expand(expr));
+			File tempFile = null;
 			try {
-				PrintWriter out = new PrintWriter("prov.txt");
-				out.println(prov);
-				out.close();
-			} catch (FileNotFoundException e) {
+				tempFile = File.createTempFile("prov", ".txt");
+
+				// Escrever o conteúdo no arquivo
+				FileWriter fileWriter = new FileWriter(tempFile);
+				BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
+				bufferedWriter.write(prov);
+				bufferedWriter.close();
+
+			} catch (IOException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 			
-			why = callMathSolver();
+			why = callMathSolver(tempFile.getAbsolutePath());
 
-			/*String regexMath = "(\\w+)\\^\\d+";
-			mathResult = result.replaceAll(regexMath, "$1");
-
-			why = "{" + mathResult.replace("*", ",")
-						    .replace("+", "},{")
-							+ "}";
-			why = why.replaceAll("\\{\\d+,", "{");
-			*/
 			for (Map.Entry<String, String> entry : mapTokens.entrySet()) 
 				why = why.replaceAll(entry.getValue(),entry.getKey());
 		}
@@ -192,37 +173,48 @@ public class ResultProcess {
 		return "{"+why+"}";
 	}
 
-	private String callMathSolver(){
-		String line = "";
-		try{       
-			// Create ProcessBuilder
-			//ProcessBuilder pb = new ProcessBuilder("python3", "src/main/resources/mathSolver.py");
-			ProcessBuilder pb = new ProcessBuilder("python3", "mathSolver.py");
-			
-			// Start the process
-			Process process = pb.start();
-			
-			// Get the input stream
-			BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-			
-			// Read the output
-			/* 
+    private String callMathSolver(String path) throws IOException{
+		 // Load the Python script from the resources
+        InputStream inputStream = ResultProcess.class.getResourceAsStream("/mathSolver.py");
+        if (inputStream == null) {
+            throw new IOException("Python script not found in resources");
+        }
+
+        // Create a temporary file for the Python script
+        Path tempScript = Files.createTempFile("script", ".py");
+        File tempFile = tempScript.toFile();
+        tempFile.deleteOnExit();  // Ensure the file is deleted on exit
+
+        // Write the script content to the temporary file
+        try (FileOutputStream outputStream = new FileOutputStream(tempFile)) {
+            byte[] buffer = new byte[1024];
+            int bytesRead;
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, bytesRead);
+            }
+        }
+
+        // Run the Python script using the `python` command
+        ProcessBuilder processBuilder = new ProcessBuilder("python3", tempFile.getAbsolutePath(), path);
+        Process process = processBuilder.start();
+
+        // Capture the output
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
             while ((line = reader.readLine()) != null) {
-                System.out.println("Python Output: " + line);
-            }*/
-			line = reader.readLine();
-			//System.out.println("Python Output: " + line);
-			
-			// Wait for the process to finish
-			int exitCode = process.waitFor();
-			if(exitCode != 0)
-				System.out.println("Python script exited with code " + exitCode);
-			//System.out.println("Python script exited with code " + exitCode);
-		} catch (IOException | InterruptedException e) {
-			e.printStackTrace();
-		}
+                output.append(line).append(System.lineSeparator());
+            }
+        }
 
-		return line;
+        try {
+            int exitCode = process.waitFor();
+            if(exitCode != 0)
+                throw new IOException(output.toString());
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
+        return output.toString();
 	}
 }

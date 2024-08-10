@@ -1,10 +1,14 @@
-package com.generic.Helpers;
+package com.Helper;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
+import java.util.List;
+import java.util.Properties;
 
 public class PostgresHelper {
 	/**
@@ -14,7 +18,9 @@ public class PostgresHelper {
 	private String postgresURL = "";
 	private String userName = "";
 	private String password = "";
-	
+	private String schema = "";
+	private boolean ssl = false;
+
 	/**
 	 * Class constructor where it is initialised the connection with Postgres (conn variable)
 	 * 
@@ -38,6 +44,31 @@ public class PostgresHelper {
 	 */
 	public PostgresHelper(String databaseURL) throws Exception{
 		postgresURL = databaseURL;
+
+		if(!this.setConnection()) {
+			throw new Exception("The connection variable has not been initialised");
+		}
+		else if (!this.TestConnection()) {
+			throw new Exception("Trino is not initialised");
+		}
+	}
+
+	/**
+	 * Class constructor where it is initialised the connection with Postgres (conn variable) with database URL, user and password as arguments
+	 * 
+	 * @param databaseURL String with the database URL
+	 * @param user String with the user
+	 * @param password String with the password
+	 * @param schema String with the schema
+	 * @param ssl boolean with the ssl
+	 * @throws Exception if the propertie values are not set
+	 */
+	public PostgresHelper(String databaseURL, String userName, String password, String schema, boolean ssl) throws Exception{
+		this.postgresURL = databaseURL;
+		this.userName = userName;
+		this.password = password;
+		this.schema = schema;
+		this.ssl = ssl;
 
 		if(!this.setConnection()) {
 			throw new Exception("The connection variable has not been initialised");
@@ -83,9 +114,18 @@ public class PostgresHelper {
 
 		 try {
 			Class.forName("org.postgresql.Driver");
-			conn = DriverManager
-			   .getConnection("jdbc:postgresql://"+this.postgresURL,
-			   this.userName, this.password);
+			Properties props = new Properties();
+            props.setProperty("user", this.userName);
+            props.setProperty("password", this.password);
+			if(this.ssl){
+            	props.setProperty("ssl", "true");
+            	props.setProperty("sslfactory", "org.postgresql.ssl.NonValidatingFactory");
+			}
+			if(!this.schema.isEmpty())
+            	props.setProperty("currentSchema", this.schema);
+
+			String url = "jdbc:postgresql://"+this.postgresURL;
+			conn = DriverManager.getConnection(url, props);
 		 } catch (Exception e) {
 			e.printStackTrace();
 			System.err.println(e.getClass().getName()+": "+e.getMessage());
@@ -165,4 +205,76 @@ public class PostgresHelper {
 
 		return result;
 	}
+
+	/**
+	* Executes a query in Trino and returns the ResltSet of the result
+	*
+	* @param query the string with the query expression
+	* @param params the list of parameters to be used in the query
+	* @return ResultSet
+	* @throws Exception if conn is null or something goes wrong with the query
+	*/
+	public ResultSet ExecuteQuery(String query, List<ParametersDB> params) throws SQLException {
+		if (conn == null) throw new SQLException("The connection variable has not been initialised");
+
+		
+		PreparedStatement pstmt = conn.prepareStatement(query);
+		
+		if(params != null) setParameters(pstmt, params);
+
+		return pstmt.executeQuery();
+	}
+
+			
+	public String getSchema() {
+		return schema;
+	}
+
+	public void setSchema(String schema) {
+		this.schema = schema;
+	}
+
+	public boolean isSsl() {
+		return ssl;
+	}
+
+	public void setSsl(boolean ssl) {
+		this.ssl = ssl;
+	}
+
+	private void setParameters(PreparedStatement pstmt, List<ParametersDB> param) throws SQLException{
+		if (param.size() > 0) {
+			for(int i = 0; i < param.size(); i++){
+				switch (param.get(i).getType()) {
+					case INT:
+						if(param.get(i).getValue() == null)
+							pstmt.setNull(i+1, Types.INTEGER);
+						else
+							pstmt.setInt(i+1, (int)param.get(i).getValue());
+						break;
+					case TEXT:
+						if(param.get(i).getValue() == null)
+							pstmt.setNull(i+1, Types.VARCHAR);
+						else
+							pstmt.setString(i+1, (String)param.get(i).getValue());
+						break;
+					case REAL:
+						if(param.get(i).getValue() == null)
+							pstmt.setNull(i+1, Types.DOUBLE);
+						else
+							pstmt.setDouble(i+1, (double)param.get(i).getValue());
+						break;
+					case LONG:
+						if(param.get(i).getValue() == null)
+							pstmt.setNull(i+1, Types.BIGINT);
+						else
+							pstmt.setLong(i+1, (long)param.get(i).getValue());
+						break;
+					default:
+						break;
+				}
+			}
+		}
+	}
 }
+

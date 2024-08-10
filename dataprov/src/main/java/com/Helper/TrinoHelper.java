@@ -1,4 +1,4 @@
-package com.generic.Helpers;
+package com.Helper;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -172,9 +172,9 @@ public class TrinoHelper {
 	 */
 	public ResultSet ExecuteQuery(String query) throws Exception {
 		if (conn == null) throw new Exception("The connection variable has not been initialised");
-
+		
 		Statement statement = conn.createStatement();
-	
+
 		ResultSet result = statement.executeQuery(query);
 
 		return result;

@@ -2,9 +2,10 @@
 A middleware solution to capture data provenance in centralized and distributed environments, using annotations propagation and query rewriting.
 
 ## USAGE	
-The solution receives as parameters the database, database URL, and the query to parse. It also has optional parameters: -wp If true, the why-provenance is computed; -t If true, the execution time is computed; -nq If true, the transformed query is printed; -np If true, the provenance is not computed. An example of the command is the following:
+The solution receives as parameters the database, database URL, and the query to parse. It also has optional parameters: -wb If true, the boolean provenance (B[X]) is computed; -wt If true, the trio provenance (Trio(X)) is computed; -wp If true, the why-provenance is computed; -wpos If true, the positive boolean provenance (PosBool(X)) is computed; -wl If true, the lineage provenance (Lin(X)) is computed; -t If true, the execution time is computed; -nq If true, the transformed query is printed; -np If true, the provenance is not computed; -dbi If true, the provenance tokens will contain database information (database:schema:table:token). An example of the command is the following:
 
-    java dataprov.jar -d [DATABASE] -u [DATABASE_URL] -q [QUERY] [-wp [TRUE/FALSE - default false] -t [TRUE/FALSE - default false] -nq [TRUE/FALSE - default false] -np [TRUE/FALSE - default false]]
+
+    java dataprov.jar -d [DATABASE] -u [DATABASE_URL] -q [QUERY] [-wb/wt/wp/wpos/wlin [TRUE/FALSE - default false] -t [TRUE/FALSE - default false] -nq [TRUE/FALSE - default false] -np [TRUE/FALSE - default false] -dbi [TRUE/FALSE - default false]]
 
 After the command, it will be asked for the username and password.
 

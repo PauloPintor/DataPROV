@@ -1,31 +1,30 @@
-package com.generic.Parser;
+package com.Parser;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.ArrayList;
 
 import net.sf.jsqlparser.expression.Alias;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.Function;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
+import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.select.GroupByElement;
 import net.sf.jsqlparser.statement.select.Join;
+import net.sf.jsqlparser.statement.select.ParenthesedSelect;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
-import net.sf.jsqlparser.statement.select.SelectBody;
-import net.sf.jsqlparser.statement.select.SelectExpressionItem;
 import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SetOperation;
 import net.sf.jsqlparser.statement.select.SetOperationList;
-import net.sf.jsqlparser.statement.select.SubSelect;
 import net.sf.jsqlparser.statement.select.UnionOp;
 
-import com.generic.Parser.ParserVisitors.*;
-
+import com.Helper.ParserHelper;
+import com.Parser.ParserVisitor.*;
 /** 
  * This class is responsible for parsing the SQL query
  * 
@@ -34,16 +33,16 @@ import com.generic.Parser.ParserVisitors.*;
  * @since 1.0
 */
 public class Parser {
-
-	private String dbname = "";
-
+    private String dbname = "";
+	private boolean withTbInfo = false;
+	private boolean isAll = false;
 	/**
 	 * The class constructor
 	 * 
 	 */
-	public Parser(String dbname){
+	public Parser(String dbname, boolean withTbInfo) {
 		this.dbname = dbname;
-
+		this.withTbInfo = withTbInfo;
 	}
 
 	/**
@@ -58,8 +57,9 @@ public class Parser {
 
 		if (statement instanceof Select) {
 			Select select = (Select) statement;
-			select.setSelectBody(addAnnotations(select.getSelectBody(), false));
-			result = select.getSelectBody().toString();
+			
+			select = addAnnotations(select, false);
+			result = select.toString();
 		}
 
 		return result;
@@ -73,6 +73,7 @@ public class Parser {
 	 */
 	private PlainSelect addAnnotations(Object object, boolean correlated) throws Exception {
 		PlainSelect newSelect = null;
+		boolean isSubSelect = false;
 		if(object instanceof SetOperationList)
 		{
 			SetOperationList setOperationList = (SetOperationList) object;
@@ -95,14 +96,18 @@ public class Parser {
 			}else{
 				throw new InvalidParserOperation();
 			}
+		}else if(object instanceof ParenthesedSelect){
+			ParenthesedSelect parenthesedSelect = (ParenthesedSelect) object;
+			isAll = parenthesedSelect.getAlias() != null && parenthesedSelect.getAlias().getName().contains("AllT");
+			newSelect = addAnnotations(parenthesedSelect.getSelect(), correlated);
+			parenthesedSelect.setSelect(newSelect);
+			isSubSelect = true;
 		}else{
 			PlainSelect plainSelect = (PlainSelect) object;
-
 			
 			if(plainSelect.getWhere() != null){
 				plainSelect = CheckWhere(plainSelect);
-			}
-			 
+			}			 
 
 			if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()){
 				newSelect = JoinF(plainSelect, correlated);
@@ -111,15 +116,17 @@ public class Parser {
 			}
 			
 		}
-
-		ParserHelper pHelper = new ParserHelper();
-		boolean hasFuncGroupBy = pHelper.projectionOnlyFunc(newSelect.getSelectItems());
-
-		if(newSelect.getGroupBy() != null || hasFuncGroupBy)
+		if(!isSubSelect)
 		{
-			newSelect = GroupByF(newSelect);
-		}else if(newSelect.getDistinct() != null){
-			newSelect = DistinctF(newSelect);
+			ParserHelper pHelper = new ParserHelper();
+			boolean hasFuncGroupBy = pHelper.projectionOnlyFunc(newSelect.getSelectItems());
+
+			if(newSelect.getGroupBy() != null || hasFuncGroupBy)
+			{
+				newSelect = GroupByF(newSelect);
+			}else if(newSelect.getDistinct() != null){
+				newSelect = DistinctF(newSelect);
+			}
 		}
 
 
@@ -134,22 +141,30 @@ public class Parser {
 	 * @throws Exception
 	 */
 	private PlainSelect ProjectionSelectionF(PlainSelect plainSelect) throws Exception {
-		SelectExpressionItem newColumn = new SelectExpressionItem();
 		String prov = "";
 		if(plainSelect.getFromItem() instanceof Table){
 			Table tempTable = (Table) plainSelect.getFromItem();
 			
-			prov = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName()) + ".prov";
-			//prov = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName()) + ".prov";
+			if(withTbInfo)
+				prov = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName()) + ".prov";
+			else
+				prov = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName()) + ".prov";
+		
 		}else{
-			SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
-			tempSubSelect.setSelectBody(addAnnotations(tempSubSelect.getSelectBody(),false));
-
+			ParenthesedSelect tempSubSelect = (ParenthesedSelect) plainSelect.getFromItem();
+			tempSubSelect.setSelect(addAnnotations(tempSubSelect.getSelect(), false));
+			
 			prov = tempSubSelect.getAlias().getName()+".prov ";			
 		}
+		
+		SelectItem<Column> newColumn = new SelectItem<Column>();
+		
+		// Create a new SelectExpressionItem for the new column
 		newColumn.setExpression(new Column(prov));
 		newColumn.setAlias(new Alias("prov"));
+		
 		plainSelect.addSelectItems(newColumn);
+		
 		return plainSelect;
 	}
 
@@ -169,12 +184,16 @@ public class Parser {
             Table tempTable = (Table) plainSelect.getFromItem();
 
 			if(!correlated)
-            	provToken = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+				if(withTbInfo)
+            		provToken = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " + (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+				else
+					provToken = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
 				//provToken = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
         }else{
-			SubSelect tempSubSelect = (SubSelect) plainSelect.getFromItem();
-			tempSubSelect.setSelectBody(addAnnotations(tempSubSelect.getSelectBody(),false));
-			provToken = tempSubSelect.getAlias().getName() + ".prov";
+			ParenthesedSelect tempSubSelect = (ParenthesedSelect) plainSelect.getFromItem();
+			tempSubSelect.setSelect(addAnnotations(tempSubSelect.getSelect(), false));
+			
+			provToken = tempSubSelect.getAlias().getName()+".prov ";
 		}
 		boolean coalesce = false;
 
@@ -182,43 +201,51 @@ public class Parser {
 			if(join.getRightItem() instanceof Table){            
                 Table tempTable = (Table) join.getRightItem();
 				if(join.isLeft()){
-					String leftProv = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
-					//String leftProv = (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
-					provToken = "COALESCE('(' || " + provToken + " || ' \u2297 ' || "+leftProv+" || ')', '(' ||"+provToken+"|| ')')";
+					String leftProv;
+					if(withTbInfo) 
+						leftProv = "'" + tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+					else
+						leftProv = (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
+
+					provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+leftProv+" || ')', '(' ||"+provToken+"|| ')')";
 					coalesce = true;
 				}else if(join.isRight()){
-					String rightProv = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
-					//String rightProv = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
-					provToken = "COALESCE('(' || " + provToken + " || ' \u2297 ' || "+rightProv+" || ')', '( ' || "+rightProv+") || ')')";
+					String rightProv;
+					
+					if(withTbInfo)
+						rightProv = "'"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+					else
+						rightProv = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+
+					provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+rightProv+" || ')', '( ' || "+rightProv+") || ')')";
 					coalesce = true;
 				}else{
-                	provToken = provToken + " || ' \u2297 ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
-					//provToken = provToken + " || ' \u2297 ' || " +(tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
-					//coalesce = false;
+					if(withTbInfo)
+                		provToken = provToken + " || ' "+(char) 0x2297+" ' || '"+tempTable.getFullyQualifiedName().replace('.',':') + ":' || " +(tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
+					else
+						provToken = provToken + " || ' "+(char) 0x2297+" ' || " +(tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
 				}
             }else{
-				SubSelect tempSubSelect = (SubSelect) join.getRightItem();
+				ParenthesedSelect tempSubSelect = (ParenthesedSelect) join.getRightItem();
 				if(tempSubSelect.getAlias() != null && tempSubSelect.getAlias().getName().contains("nestedT"))
-					tempSubSelect.setSelectBody(addAnnotations(tempSubSelect.getSelectBody(), true));
+					tempSubSelect.setSelect(addAnnotations(tempSubSelect, true));
 				else
-					tempSubSelect.setSelectBody(addAnnotations(tempSubSelect.getSelectBody(),false));
+					tempSubSelect.setSelect(addAnnotations(tempSubSelect,false));
 			
 				if(join.isLeft()){
-					provToken = "COALESCE('(" + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov || ')', '("+provToken+"|| ')')";
-					//provToken = "COALESCE('(' || " + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov || ')', '(' || "+provToken+"|| ')')";
+					provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov || ')', '(' || "+provToken+"|| ')')";
+					
 					coalesce = true;	
 				}
 				else if(join.isRight()){
-					provToken = "COALESCE('(" + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov|| ')', '("+tempSubSelect.getAlias().getName()+".prov || ')')";
-					//provToken = "COALESCE('(' || " + provToken + " || ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov|| ')', '(' || "+tempSubSelect.getAlias().getName()+".prov || ')')";
+					provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov|| ')', '(' || "+tempSubSelect.getAlias().getName()+".prov || ')')";
+					
 					coalesce = true;
 				}
 				else if(correlated){
 					provToken = tempSubSelect.getAlias().getName()+".prov";
-					//coalesce = false;
 				}else{
-					provToken = provToken + "|| ' \u2297 ' || "+tempSubSelect.getAlias().getName()+".prov";
-					//coalesce = false;
+					provToken = provToken + "|| ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov";
 				}
 
 			}
@@ -228,11 +255,12 @@ public class Parser {
 		if(!coalesce && !correlated)
 			provToken = "'(' || "+provToken+" || ')'";
 		
-		SelectExpressionItem newColumn = new SelectExpressionItem();
+		SelectItem<Column> newColumn = new SelectItem<Column>();
+		newColumn.setExpression(new Column(provToken));
 		
-		newColumn.setExpression(new net.sf.jsqlparser.schema.Column(provToken));
 		newColumn.setAlias(new Alias("prov"));
 		plainSelect.addSelectItems(newColumn);
+		
 		return plainSelect;
 	}
 
@@ -245,9 +273,9 @@ public class Parser {
 	private PlainSelect UnionF(SetOperationList setOperationList) throws Exception {
 		ParserHelper pHelper = new ParserHelper();
 
-		List<SelectItem> selectItems = pHelper.getUnionColumns(setOperationList.getSelects().get(0));
+		List<SelectItem<?>> selectItems = pHelper.getUnionColumns(setOperationList.getSelects().get(0));
 
-		for(SelectBody select : setOperationList.getSelects()){
+		for(Select select : setOperationList.getSelects()){
 			addAnnotations(select,false);
 		}
 
@@ -258,24 +286,25 @@ public class Parser {
 		}
 
 		PlainSelect newSelect = new PlainSelect();
-        SubSelect subSelect = new SubSelect();
-         
-		subSelect.setSelectBody(setOperationList);
-        subSelect.setAlias(new Alias("_un"));
-        newSelect.setFromItem(subSelect);
-		GroupByElement groupByElements = new GroupByElement();
-
-        for(SelectItem ex : selectItems){
-			SelectExpressionItem expressionItem = (SelectExpressionItem) ex;
-        	groupByElements.addGroupByExpressions(expressionItem.getExpression());
+		ParenthesedSelect parenthesedSelect = new ParenthesedSelect();
+		parenthesedSelect.setSelect(setOperationList);
+		parenthesedSelect.setAlias(new Alias("_un"));
+		newSelect.setFromItem(parenthesedSelect);
+		
+		ExpressionList<Column> groupByList = new ExpressionList<Column>();
+		for(SelectItem<?> ex : selectItems){
+			groupByList.addExpression((Column) ex.getExpression());
 		}
-		newSelect.setGroupByElement(groupByElements);
+		
+		GroupByElement groupBy = new GroupByElement();
+		groupBy.setGroupByExpressions(groupByList);
+		newSelect.setGroupByElement(groupBy);
 
 		Column prov = new Column();
 		prov.setColumnName("prov");
 		prov.setTable(new Table("_un"));
 		
-		SelectExpressionItem provItem  = new SelectExpressionItem(prov);
+		SelectItem<Column> provItem  = new SelectItem<Column>(prov);
 		provItem.setAlias(new Alias("prov"));
 		selectItems.add(provItem);
 
@@ -295,28 +324,40 @@ public class Parser {
 
 		String aggFunction = "";
 		FunctionProjection funcVisitor = new FunctionProjection();
-		newSelect.getSelectItems().forEach(item -> item.accept(funcVisitor));
-		if(funcVisitor.hasFunction()) aggFunction = funcVisitor.getAggExpression();
+		newSelect.getSelectItems().forEach(item -> item.accept(funcVisitor, null));
+		if(funcVisitor.hasFunction() && !isAll) aggFunction = funcVisitor.getAggExpression();
 
 		String firstColumn = pHelper.aggFunctionOrderBy(newSelect.getSelectItems().get(0));
-
-		for (SelectItem selectItem : newSelect.getSelectItems()) {
-			if (selectItem instanceof SelectExpressionItem) {
-
-				SelectExpressionItem expressionItem = (SelectExpressionItem) selectItem;
-				
-				if(expressionItem.getAlias() != null && expressionItem.getAlias().getName() == "prov")
+		List<SelectItem<?>> newSelectItems = new ArrayList<>();
+		for (SelectItem<?> selectItem : newSelect.getSelectItems()) {
+			if (selectItem.getExpression() instanceof Column) {
+				if(selectItem.getAlias() != null && selectItem.getAlias().getName() == "prov")
 				{
-					Column column = (Column) expressionItem.getExpression();
-					expressionItem.setExpression(new Column("'(' ||"+pHelper.getAggFunction(column.toString() + " " +aggFunction, '\u2295', firstColumn, dbname)+"|| ')'"));
-				}
-			}
+					Column column = (Column) selectItem.getExpression();
+					
+					if(column.getTable() != null && column.getTable().getName().contains("_un")){
+						SelectItem<Column> newColumn = new SelectItem<Column>(new Column(pHelper.getAggFunction(column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname)));
+						newColumn.setAlias(new Alias("prov"));
+						newSelectItems.add(newColumn);		
+						
+					}else{
+						SelectItem<Column> newColumn = new SelectItem<Column>(new Column("'(' ||"+pHelper.getAggFunction(column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname)+"|| ')'"));
+						newColumn.setAlias(new Alias("prov"));
+						newSelectItems.add(newColumn);		
+						
+					}
+				}else 
+					newSelectItems.add(selectItem);
+			}else
+				newSelectItems.add(selectItem);
 		}
 
-		if(funcVisitor.isMinMax())
+		newSelect.setSelectItems(newSelectItems);
+		
+		if(funcVisitor.isMinMax() && !isAll)
 		{
 			newSelect = MinMaxF(newSelect, funcVisitor.getMinMaxColumn());
-		}
+		} 
 
 		return newSelect;
 	}
@@ -331,38 +372,31 @@ public class Parser {
 	 */
 	private PlainSelect MinMaxF(PlainSelect newSelect, Column minMaxColumn) throws AmbigousParserColumn {
 		if(minMaxColumn.getTable() == null) throw new AmbigousParserColumn();
-		Column newColumn = new Column();
+		SelectItem<?> newColumn = new SelectItem<>();
 		PlainSelect copyNewSelect = new PlainSelect();
-		List<SelectExpressionItem> restOfColumns = new ArrayList<SelectExpressionItem>();
-
-		for (SelectItem selectItem : newSelect.getSelectItems()) {
-			if (selectItem instanceof SelectExpressionItem) {
 		
-				SelectExpressionItem expressionItem = (SelectExpressionItem) selectItem;
-				
-				if(expressionItem.getAlias() != null && expressionItem.getAlias().getName() == "prov")
+		List<SelectItem<?>> restOfColumns = new ArrayList<>();
+		
+		for (SelectItem<?> selectItem : newSelect.getSelectItems()) {		
+				if(selectItem.getAlias() != null && selectItem.getAlias().getName() == "prov")
 				{
 					continue;
 				}else{
-					if(expressionItem.getExpression() instanceof Function){
-						if(expressionItem.getAlias() == null){
-							
-							SelectExpressionItem newExpressionItem = new SelectExpressionItem();
-							newExpressionItem.setExpression(expressionItem.getExpression());
-							newExpressionItem.setAlias(new Alias("MinMaxCol"));
-							newColumn = new Column(newExpressionItem.getAlias().getName());
-							copyNewSelect.addSelectItems(newExpressionItem);
+					if(selectItem.getExpression() instanceof Function){
+						if(selectItem.getAlias() == null){
+							newColumn = selectItem;
+							newColumn.setAlias(new Alias("MinMaxCol"));
+							copyNewSelect.addSelectItems(newColumn);
 						}else{
-							newColumn = new Column(expressionItem.getAlias().getName());
-							copyNewSelect.addSelectItems(expressionItem);
+							newColumn = selectItem;
+							copyNewSelect.addSelectItems(newColumn);
 						}	
 						
 					}else{
-						copyNewSelect.addSelectItems(expressionItem);
-						restOfColumns.add(expressionItem);
+						copyNewSelect.addSelectItems(selectItem);
+						restOfColumns.add(selectItem);
 					}
 					
-				}
 			}
 		}
 
@@ -372,10 +406,9 @@ public class Parser {
 		copyNewSelect.setJoins(newSelect.getJoins());
 		copyNewSelect.setWhere(newSelect.getWhere());
 		
-		SubSelect copySub = new SubSelect();
-		copySub.setSelectBody(copyNewSelect);
+		ParenthesedSelect copySub = new ParenthesedSelect();
+		copySub.setSelect(copyNewSelect);
 		copySub.setAlias(new Alias("MinMax"));
-		newColumn.setTable(new Table("MinMax"));
 
 		Join newJoin = new Join();
 		newJoin.setSimple(true);
@@ -388,8 +421,11 @@ public class Parser {
 		
 		EqualsTo newCondition = new EqualsTo();
 		newCondition.setLeftExpression(minMaxColumn);
-		newCondition.setRightExpression(newColumn);
 
+		Column joinColumn = new Column(newColumn.getAlias().getName());
+		joinColumn.setTable(new Table("MinMax"));
+		newCondition.setRightExpression(joinColumn);
+		
 		Expression currentWhere = newSelect.getWhere();
 		if (currentWhere == null) {
 			newSelect.setWhere(newCondition);
@@ -397,7 +433,7 @@ public class Parser {
 			newSelect.setWhere(new AndExpression(currentWhere, newCondition));
 		}
 
-		for(SelectExpressionItem item : restOfColumns){
+		for(SelectItem<?> item : restOfColumns){
 			EqualsTo restCondition = new EqualsTo();
 			restCondition.setLeftExpression(item.getExpression());
 			Column restColumn = new Column(((Column)item.getExpression()).getColumnName());
@@ -420,24 +456,29 @@ public class Parser {
 	private PlainSelect DistinctF(PlainSelect newSelect) throws Exception {
 		ParserHelper pHelper = new ParserHelper();		
 
-		String firstColumn = pHelper.aggFunctionOrderBy(newSelect.getSelectItems().get(0));
- 		GroupByElement groupByElements = new GroupByElement();
+		ExpressionList<Column> groupByList = new ExpressionList<>();
 		
-		for (SelectItem selectItem : newSelect.getSelectItems()) {
-			if (selectItem instanceof SelectExpressionItem) {
+		String firstColumn = pHelper.aggFunctionOrderBy(newSelect.getSelectItems().get(0));
+ 		
+		List<SelectItem<?>> newSelectItems = new ArrayList<>();
 
-				SelectExpressionItem expressionItem = (SelectExpressionItem) selectItem;
-				
-				if(expressionItem.getAlias() != null && expressionItem.getAlias().getName() == "prov")
-				{
-					Column column = (Column) expressionItem.getExpression();
-					expressionItem.setExpression(new Column("'(' ||"+pHelper.getAggFunction(column.toString(), '\u2295', firstColumn, dbname)+"|| ')'"));
-				}else if(expressionItem.getExpression() instanceof Column){
-					groupByElements.addGroupByExpressions(expressionItem.getExpression());
-				}
+		for (SelectItem<?> selectItem : newSelect.getSelectItems()) {
+			if(selectItem.getAlias() != null && selectItem.getAlias().getName() == "prov")
+			{
+				Column column = (Column) selectItem.getExpression();
+				SelectItem<Column> newColumn = new SelectItem<Column>(new Column("'(' ||"+pHelper.getAggFunction(column.toString(), (char) 0x2295, firstColumn, dbname)+"|| ')'"));
+				newColumn.setAlias(new Alias("prov"));
+				newSelectItems.add(newColumn);
+			}else if(selectItem.getExpression() instanceof Column){
+				groupByList.addExpression((Column) selectItem.getExpression());	
+				newSelectItems.add(selectItem);			
 			}
 		}
-		newSelect.setGroupByElement(groupByElements);
+		GroupByElement groupBy = new GroupByElement();
+		groupBy.setGroupByExpressions(groupByList);
+		newSelect.setGroupByElement(groupBy);
+		newSelect.setSelectItems(newSelectItems);
+		
 		newSelect.setDistinct(null);
 		return newSelect;
 	}	
@@ -447,3 +488,5 @@ public class Parser {
 		return whereVisitor.identifyOperators(plainSelect);
 	}
 }
+
+

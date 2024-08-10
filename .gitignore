@@ -27,19 +27,11 @@ replay_pid*
 .gitattributes
 dataprov/.DS_Store
 .DS_Store
-genericprovenance/
-genericprovenance/bin/
-dataprov/src/main/java/com/generic/Parser/_Parser.java
-genericprovenance/bin/.settings/org.eclipse.jdt.core.prefs
-dataprov/src/main/java/com/generic/Dataprov/TestApp.java
 .idea/.gitignore
 .idea/GenericProvenance.iml
 .idea/misc.xml
 .idea/modules.xml
 .idea/vcs.xml
-dataprov/src/main/java/com/generic/Dataprov/TestJavaLinux.java
-dataprov/prov.txt
-dataprov/src/main/java/com/generic/Dataprov/TestMath.java
 dataprov/target/maven-archiver/pom.properties
 dataprov/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst
 dataprov/target/maven-status/maven-compiler-plugin/testCompile/default-testCompile/createdFiles.lst
@@ -47,3 +39,4 @@ dataprov/target/maven-status/maven-compiler-plugin/testCompile/default-testCompi
 dataprov/target/surefire-reports/com.generic.provenance.AppTest.txt
 dataprov/target/surefire-reports/TEST-com.generic.provenance.AppTest.xml
 dataprov/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst
+dataprov/src/main/java/com/dataprov/TestErrors.java

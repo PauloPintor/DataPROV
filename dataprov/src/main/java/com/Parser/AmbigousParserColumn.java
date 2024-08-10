@@ -1,4 +1,4 @@
-package com.generic.Parser;
+package com.Parser;
 
 /** 
  * Class responsible to throw an exception when projection columns are ambiguous

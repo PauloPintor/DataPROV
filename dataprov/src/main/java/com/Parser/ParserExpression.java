@@ -1,25 +1,25 @@
-package com.generic.Parser;
+package com.Parser;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.schema.Table;
-import net.sf.jsqlparser.statement.select.SubSelect;
+import net.sf.jsqlparser.statement.select.ParenthesedSelect;
 
 public class ParserExpression {
-	private SubSelect select;
+	private ParenthesedSelect select;
 	private Table joinTable;
 	private List<Expression> joinExp;
 	private List<Expression> whereExpressions;
 
 	public ParserExpression(){}
 
-	public void setSelect(SubSelect select){
+	public void setSelect(ParenthesedSelect select){
 		this.select = select;
 	}
 
-	public SubSelect getSelect(){
+	public ParenthesedSelect getSelect(){
 		return this.select;
 	}
 
@@ -37,17 +37,17 @@ public class ParserExpression {
 
 	public void addJoinExpression(Expression expression){
 		if(joinExp == null)
-			this.joinExp = new ArrayList<Expression>();
+			this.joinExp = new ExpressionList<Expression>();
 		this.joinExp.add(expression);
 	}
 
-	public void setJoinExpressions(List<Expression> expressions){
+	public void setJoinExpressions(ExpressionList<Expression> expressions){
 		this.joinExp = expressions;
 	}
 
 	public void setJoinExpressions(Expression expression){
 		if(joinExp == null)
-			this.joinExp = new ArrayList<Expression>();
+			this.joinExp = new ExpressionList<Expression>();
 		this.joinExp.add(expression);
 	}
 
@@ -65,7 +65,7 @@ public class ParserExpression {
 
 	public void addWhereExpression(Expression expression){
 		if(whereExpressions == null)
-			this.whereExpressions = new ArrayList<Expression>();
+			this.whereExpressions = new ExpressionList<Expression>();
 		this.whereExpressions.add(expression);
 	}
 

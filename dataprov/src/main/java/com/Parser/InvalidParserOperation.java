@@ -1,4 +1,4 @@
-package com.generic.Parser;
+package com.Parser;
 
 /** 
  * Class responsible to throw an exception when the parser does not support the operation
@@ -12,3 +12,4 @@ public class InvalidParserOperation extends Exception{
         super("Invalid operation. The parser only supports SELECT, UNION, DISTINCT, JOIN and GROUP BY.");
     }
 }
+

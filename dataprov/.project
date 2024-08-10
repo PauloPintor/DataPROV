@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>genericprovenance</name>
+	<name>dataprov</name>
 	<comment></comment>
 	<projects>
 	</projects>
@@ -22,7 +22,7 @@
 	</natures>
 	<filteredResources>
 		<filter>
-			<id>1698417315636</id>
+			<id>1716976003123</id>
 			<name></name>
 			<type>30</type>
 			<matcher>

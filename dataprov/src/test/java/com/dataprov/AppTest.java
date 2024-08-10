@@ -1,4 +1,4 @@
-package com.generic.provenance;
+package com.dataprov;
 
 import static org.junit.Assert.assertTrue;
 

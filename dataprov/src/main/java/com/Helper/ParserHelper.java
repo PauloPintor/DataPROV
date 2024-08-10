@@ -1,4 +1,4 @@
-package com.generic.Parser;
+package com.Helper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,17 +10,19 @@ import net.sf.jsqlparser.expression.Function;
 import net.sf.jsqlparser.expression.operators.arithmetic.Addition;
 import net.sf.jsqlparser.expression.operators.arithmetic.Division;
 import net.sf.jsqlparser.expression.operators.arithmetic.Multiplication;
+import net.sf.jsqlparser.expression.operators.arithmetic.Subtraction;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.relational.*;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.select.FromItem;
 import net.sf.jsqlparser.statement.select.Join;
+import net.sf.jsqlparser.statement.select.ParenthesedSelect;
 import net.sf.jsqlparser.statement.select.PlainSelect;
-import net.sf.jsqlparser.statement.select.SelectExpressionItem;
+//import net.sf.jsqlparser.statement.select.SelectExpressionItem;
 import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SetOperationList;
-import net.sf.jsqlparser.statement.select.SubSelect;
+//import net.sf.jsqlparser.statement.select.SubSelect;
 
 public class ParserHelper {
 	public Expression buildAndExpression(List<Expression> expressions) {
@@ -90,8 +92,8 @@ public class ParserHelper {
 
 		if(table2 instanceof Table)
 			return areTablesEqual(table1, (Table) table2);
-		else if(table2 instanceof SubSelect){
-			SubSelect subSelect = (SubSelect) table2;
+		else if(table2 instanceof ParenthesedSelect){
+			ParenthesedSelect subSelect = (ParenthesedSelect) table2;
 			if(subSelect.getAlias() != null)
 				return table1.getName().equals(subSelect.getAlias().getName());
 			else
@@ -103,6 +105,9 @@ public class ParserHelper {
 
 	public boolean areTablesEqual(Table table1, Table table2) {
 		// Compare the table names
+		if(table1 == null || table2 == null)
+			return false;
+			
 		String tableName1 = table1.getName();
 		String tableName2 = table2.getName();
 
@@ -114,17 +119,17 @@ public class ParserHelper {
 		return tableName1.equals(tableName2) && ((alias1 == null && alias2 == null) || alias1.equals(alias2)) || tableName1.equals(alias2) || tableName2.equals(alias1);
 	}
 
-	public boolean areColumnsEquals(Column col1, Column col2) {
+	public boolean areColumnsEquals(SelectItem<?> col1, SelectItem<?> col2) {
 		// Compare the table names
-		String colName1 = col1.getColumnName();
-		String colName2 = col2.getColumnName();
+		String colName1 = col1.getExpression() instanceof Column ? ((Column) col1.getExpression()).getFullyQualifiedName() : "";
+		String colName2 = col2.getExpression() instanceof Column ? ((Column) col2.getExpression()).getFullyQualifiedName() : "";
 
-		String tableName1 = col1.getTable() != null ? col1.getTable().getName() : "";
-        String tableName2 = col2.getTable() != null ? col2.getTable().getName() : "";
+		String tableName1 = col1.getExpression() instanceof Column ? (((Column) col1.getExpression()).getTable() != null ? ((Column) col1.getExpression()).getTable().getName() : "") : "";
+        String tableName2 = col2.getExpression() instanceof Column ? (((Column) col2.getExpression()).getTable() != null ? ((Column) col1.getExpression()).getTable().getName() : "") : "";
         
 		// Compare the table aliases (if any)
-		String alias1 = col1.getName(true);
-		String alias2 = col1.getName(true);
+		String alias1 = col1.getAlias() != null ? col1.getAlias().getName() : null;
+		String alias2 = col2.getAlias() != null ? col2.getAlias().getName() : null;
 
 		// Check if the names and aliases match
 		return colName1.equals(colName2) && ((alias1 == null && alias2 == null) || alias1.equals(alias2)) || tableName1.equals(alias2) || tableName2.equals(alias1);
@@ -137,8 +142,8 @@ public class ParserHelper {
 		FromItem mainFromItem = plainSelect.getFromItem();
 		if (mainFromItem instanceof Table) {
 			joinTables.add((Table) mainFromItem);
-		}else if(mainFromItem instanceof SubSelect){
-			SubSelect subSelect = (SubSelect) mainFromItem;
+		}else if(mainFromItem instanceof ParenthesedSelect){
+			ParenthesedSelect subSelect = (ParenthesedSelect) mainFromItem;
 			joinTables.add(new Table(subSelect.getAlias().getName()));
 		}
 
@@ -148,8 +153,8 @@ public class ParserHelper {
 				FromItem joinFromItem = join.getRightItem();
 				if (joinFromItem instanceof Table) {
 					joinTables.add((Table) joinFromItem);
-				}else if(joinFromItem instanceof SubSelect){
-					SubSelect subSelect = (SubSelect) joinFromItem;
+				}else if(joinFromItem instanceof ParenthesedSelect){
+					ParenthesedSelect subSelect = (ParenthesedSelect) joinFromItem;
 					joinTables.add(new Table(subSelect.getAlias().getName()));
 				}
 				
@@ -159,8 +164,8 @@ public class ParserHelper {
         return joinTables;
     }
 
-	public List<Expression> equiJoins(List<Expression> expressions, Table table, String alias){
-		List<Expression> newExpressions = new ArrayList<Expression>();
+	public ExpressionList<Expression> equiJoins(List<Expression> expressions, Table table, String alias){
+		ExpressionList<Expression> newExpressions = new ExpressionList<Expression>();
 		for(Expression expression : expressions){
 			EqualsTo _equalsTo = null;
 			if(!(expression instanceof EqualsTo)){
@@ -208,9 +213,15 @@ public class ParserHelper {
      */
     public String getAggFunction(String expression, char separator, String orderByColumn, String dbname){
 		if(dbname.toLowerCase().compareTo("trino") == 0)
-        	return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
+			if(orderByColumn == "")
+        		return String.format("listagg(%s, ' %c ') WITHIN GROUP", expression, separator);
+			else
+				return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
 		else if(dbname.toLowerCase().compareTo("postgres") == 0)
-			return String.format("STRING_AGG(%s, ' %c ' ORDER BY %s)", expression, separator, orderByColumn);
+			if(orderByColumn == "")
+				return String.format("STRING_AGG(%s, ' %c ')", expression, separator, orderByColumn);
+			else
+				return String.format("STRING_AGG(%s, ' %c ' ORDER BY %s)", expression, separator, orderByColumn);
 		
 		return "";
     }
@@ -220,19 +231,28 @@ public class ParserHelper {
 	 * @param selectItems the list of columns in the projection
 	 * @return a boolean to indicate if the query is a projection only with a function
 	 */
-	public boolean projectionOnlyFunc(List<SelectItem> selectItems) {
+	public boolean projectionOnlyFunc(List<SelectItem<?>> selectItems) {
 		boolean result = false;
-		
-		if(selectItems.get(0) instanceof SelectExpressionItem){
-			SelectExpressionItem selectExpressionItem = (SelectExpressionItem) selectItems.get(0);
-			if(selectExpressionItem.getExpression() instanceof Function){
-				Function function = (Function) selectExpressionItem.getExpression();
-				if(function.getName().toLowerCase().equals("substring"))
-					result = false;
-				else
+		List<SelectItem<?>> newSelectItems = new ArrayList<SelectItem<?>>();
+
+		for (SelectItem<?> selectItem : selectItems) {
+			if(selectItem.getExpression() instanceof Column){
+				if(selectItem.getAlias() != null && !selectItem.getAlias().getName().equals("prov")){
+					newSelectItems.add(selectItem);
+				}else if(selectItem.getAlias() == null && !((Column) selectItem.getExpression()).getColumnName().equals("prov")){
+					newSelectItems.add(selectItem);
+				}
+			}else {
+				newSelectItems.add(selectItem);
+			}
+		}
+
+		if(newSelectItems.size() == 1){
+			if(newSelectItems.get(0) instanceof SelectItem){
+				SelectItem<?> selectItem = newSelectItems.get(0);
+				if(selectItem.getExpression() instanceof Function || selectItem.getExpression() instanceof Multiplication || selectItem.getExpression() instanceof Division){
 					result = true;
-			}else if(selectExpressionItem.getExpression() instanceof Multiplication || selectExpressionItem.getExpression() instanceof Division){
-				result = true;
+				}
 			}
 		}
 
@@ -245,24 +265,13 @@ public class ParserHelper {
 	 * @return a String with the column needed in the aggregation function for the order by
 	 * @throws Exception
 	 */
-	public String aggFunctionOrderBy(SelectItem firstColumn) throws Exception {
-		SelectExpressionItem selectExpressionItem = (SelectExpressionItem) firstColumn;
-		if(selectExpressionItem.getExpression() instanceof Column){
-			Column column = (Column) selectExpressionItem.getExpression();
+	public String aggFunctionOrderBy(SelectItem<?> firstColumn) throws Exception {
+		if(firstColumn.getExpression() instanceof Column){
+			Column column = (Column) firstColumn.getExpression();
 			return column.getFullyQualifiedName();			
-		}else if(selectExpressionItem.getExpression() instanceof Function){
-			return "1";
-		}else if(selectExpressionItem.getExpression() instanceof Multiplication){
-			return "1";
-		}else if(selectExpressionItem.getExpression() instanceof Division){
-			return "1";
-		}else if(selectExpressionItem.getExpression() instanceof Addition){
-				return "1";
-		}else if(selectExpressionItem.getExpression() instanceof CaseExpression){
-			return "1";
 		}else{
-			throw new Exception("The first column in the projection is not a column or a function");
-		}
+			return "";
+		} 
 	}
 
 	/**
@@ -271,58 +280,48 @@ public class ParserHelper {
 	 * @param object the query
 	 * @return a list of columns
 	 */
-	public List<SelectItem> getUnionColumns(Object object){
-		List<SelectItem> result = new ArrayList<SelectItem>();
+	public List<SelectItem<?>> getUnionColumns(Object object){
+		List<SelectItem<?>> result = new ArrayList<SelectItem<?>>();
 		int count = 0;
 		if(object instanceof PlainSelect){
 			PlainSelect plainSelect = (PlainSelect) object;
 
-			for (SelectItem selectItem : plainSelect.getSelectItems()) {
-				if (selectItem instanceof SelectExpressionItem) {
+			for(SelectItem<?> selectItem : plainSelect.getSelectItems()) {
+				if(selectItem.getExpression() instanceof Function || selectItem.getExpression() instanceof Multiplication || selectItem.getExpression() instanceof Division || selectItem.getExpression() instanceof Addition || selectItem.getExpression() instanceof Subtraction){
+					Column _column = null;
+					if(selectItem.getAlias() == null){
+						selectItem.setAlias(new Alias("func_"+count));
+					}
+					_column = new Column(new Table("_un"), selectItem.getAlias().getName());
 					
-					SelectExpressionItem expressionItem = (SelectExpressionItem) selectItem;
-					if(expressionItem.getExpression() instanceof Function){
-						Column _column = null;
-						if(expressionItem.getAlias() == null){
-							expressionItem.setAlias(new Alias("func_"+count));
-							_column = new Column(new Table("_un"), "func_"+count);
-						}else{
-							_column = new Column(new Table("_un"), expressionItem.getAlias().getName());
-						}
-						result.add(new SelectExpressionItem(_column));  
-					}else
-					{
-						Column _column = new Column(new Table("_un"), ((Column) expressionItem.getExpression()).getColumnName());
-						result.add(new SelectExpressionItem(_column));  
-					}	  
+					result.add(new SelectItem<Column>(_column));
+				}else{
+					Column _column = new Column(new Table("_un"), ((Column) selectItem.getExpression()).getColumnName());
+					result.add(new SelectItem<Column>(_column));
 				}
 			}
-		}else if(object instanceof SubSelect){
-			SubSelect tempSubSelect = (SubSelect) object;
-			if(tempSubSelect.getSelectBody() instanceof PlainSelect){
-				PlainSelect tempPlainSelect = (PlainSelect) (tempSubSelect).getSelectBody();
-				for (SelectItem selectItem : tempPlainSelect.getSelectItems()) {
-					if (selectItem instanceof SelectExpressionItem) {
-						
-						SelectExpressionItem expressionItem = (SelectExpressionItem) selectItem;
-						if(expressionItem.getExpression() instanceof Function){
-							if(expressionItem.getAlias() == null){
-								expressionItem.setAlias(new Alias("func_"+count));
-							}
-							Column _column = new Column(new Table("_un"), "func_"+count);
-							result.add(new SelectExpressionItem(_column)); 
-						}else{
-							Column _column = new Column(new Table("_un"), ((Column) expressionItem.getExpression()).getColumnName());
-							result.add(new SelectExpressionItem(_column));
+		}else if(object instanceof ParenthesedSelect){
+			ParenthesedSelect parenthesedSelect = (ParenthesedSelect) object;
+			if(parenthesedSelect.getSelect() instanceof PlainSelect){
+				PlainSelect plainSelect = (PlainSelect) parenthesedSelect.getSelect();
+				
+				for (SelectItem<?> selectItem : plainSelect.getSelectItems()) {
+					if (selectItem.getExpression() instanceof Function) {
+						if(selectItem.getAlias() == null){
+							selectItem.setAlias(new Alias("func_"+count));
 						}
-
-						   
+						Column _column = new Column(new Table("_un"), selectItem.getAlias().getName());
+						result.add(new SelectItem<Column>(_column));
+					}else{
+						Column _column = new Column(new Table("_un"), ((Column) selectItem.getExpression()).getColumnName());
+						result.add(new SelectItem<Column>(_column));
 					}
 				}
-			}else if(tempSubSelect.getSelectBody() instanceof SetOperationList){
-				result = getUnionColumns(((SetOperationList) tempSubSelect.getSelectBody()).getSelects().get(0));
-			}
+			}else if(parenthesedSelect.getSelect() instanceof SetOperationList){
+				result = getUnionColumns(((SetOperationList) parenthesedSelect.getSelect()).getSelects().get(0));
+			} 
 		}
+			
 		return result;
 	}
 
