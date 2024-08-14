@@ -207,7 +207,7 @@ public class AppManager {
 		if (withTime) {
 			startTime = System.currentTimeMillis();
 		}
-		ResultProcess rp = new ResultProcess(false);
+		ResultProcess rp = new ResultProcess(withWhy, withBoolean, withTrio, withPos, withLineage);
 		rp.processing(result);
 		if (withTime) {
 			endTime = System.currentTimeMillis();
@@ -223,7 +223,7 @@ public class AppManager {
 		if (withTime && withWhy) {
 			startTime = System.currentTimeMillis();
 		}
-        ResultProcess rp = new ResultProcess(withWhy);
+        ResultProcess rp = new ResultProcess(withWhy, withBoolean, withTrio, withPos, withLineage);
 		
 		rp.processing(result);
 		if (withTime && withWhy) {

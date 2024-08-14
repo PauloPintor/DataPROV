@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -24,8 +25,17 @@ import java.util.regex.Pattern;
 public class ResultProcess {
     List<LinkedHashMap<String, Object>> result = new ArrayList<LinkedHashMap<String, Object>>();
 	boolean why = false;
-	public ResultProcess(boolean why) {
+	boolean booleanResult = false;
+	boolean trioResult = false;
+	boolean posResult = false;
+	boolean lineageResult = false;
+
+	public ResultProcess(boolean why, boolean booleanResult, boolean trioResult, boolean posResult, boolean lineageResult) {
 		this.why = why;
+		this.booleanResult = booleanResult;
+		this.trioResult = trioResult;
+		this.posResult = posResult;
+		this.lineageResult = lineageResult;
 	}
 
 	public void processing(ResultSet _result) throws SQLException, IOException {
@@ -40,7 +50,9 @@ public class ResultProcess {
 				{
 					String prov = _result.getString(rsmd.getColumnName(i)).replaceAll("\\b(\\w+)\\s*:\\(", "(");
 					row.put("how", prov);
-					if (why) row.put("why", processWhy(prov));
+					if(why || booleanResult || trioResult || posResult || lineageResult) 
+						processProvenance(prov, row);
+					//if (why) row.put("why", processWhy(prov));
 				}	
 				else
 				{
@@ -100,8 +112,12 @@ public class ResultProcess {
         return columnWidths;
     }
 
-	private String processWhy(String prov) throws IOException {
-		String why = "";
+	public void processProvenance(String prov, LinkedHashMap<String, Object> row) throws IOException {
+		String whyProv = "";
+		String booleanProv = "";
+		String trioProv = "";
+		String posProv = "";
+		String lineageProv = "";
 
 
 		prov = prov.replaceAll("\\.(min|avg|sum|max|count)\\s+\\d+(\\.\\d+)?", "");
@@ -119,14 +135,27 @@ public class ResultProcess {
 		
 		HashMap<String, String> mapTokens = new HashMap<String, String>();
 
-		String mathResult = "";
-		//prov = sb.toString();
 		prov = prov.replaceAll("\u2297","*").replaceAll("\u2295", "+");
-		//prov = prov.replaceAll("\\s+(?=\\))", "");
-		if(prov.indexOf(") *") != -1 || prov.indexOf("* (") != -1)
+
+		int j = 0;
+
+		while (matcher.find()) {
+			j++;
+			String word = matcher.group();
+			if(!mapTokens.containsKey(word)){
+				mapTokens.put(word, "x"+i);
+				prov = prov.replace(word, "x"+i);
+				i++;
+			}
+		} 
+
+		if(j == 0)
 		{
-			//System.out.println("Parser used!");
+			regex = "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b";
+			pattern = Pattern.compile(regex);
+			matcher = pattern.matcher(prov);
 			while (matcher.find()) {
+				j++;
 				String word = matcher.group();
 				if(!mapTokens.containsKey(word)){
 					mapTokens.put(word, "x"+i);
@@ -134,46 +163,67 @@ public class ResultProcess {
 					i++;
 				}
 			} 
-			
-			File tempFile = null;
-			try {
-				tempFile = File.createTempFile("prov", ".txt");
+		}	
+		
+		File tempFile = null;
+		try {
+			tempFile = File.createTempFile("prov", ".txt");
 
-				// Escrever o conteúdo no arquivo
-				FileWriter fileWriter = new FileWriter(tempFile);
-				BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
-				bufferedWriter.write(prov);
-				bufferedWriter.close();
+			// Escrever o conteúdo no arquivo
+			FileWriter fileWriter = new FileWriter(tempFile);
+			BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
+			bufferedWriter.write(prov);
+			bufferedWriter.close();
 
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-			
-			why = callMathSolver(tempFile.getAbsolutePath());
-
-			for (Map.Entry<String, String> entry : mapTokens.entrySet()) 
-				why = why.replaceAll(entry.getValue(),entry.getKey());
+		} catch (IOException e) {
+			throw new IOException("Error creating temporary file", e);
 		}
-		else
-		{
+		
+		
+		callMathSolver(tempFile.getAbsolutePath());
 
-			why = prov.replace(" * ", ",")
-							 .replace("+", ",")
-							 .replace("(", "{")
-							 .replace(")", "}");
-
-			if(why.contains("{{") || why.contains("}}")){
-				why = why.replace("{{", "{")
-					     .replace("}}", "}");
+		List<String> lines = Files.readAllLines(Paths.get(tempFile.getAbsolutePath()));
+		for(i = 0; i < lines.size(); i++){
+			if(i == 0 && lines.get(i) != "" && booleanResult == true){
+				booleanProv = lines.get(i);
+				for (Map.Entry<String, String> entry : mapTokens.entrySet())
+					booleanProv = booleanProv.replaceAll(entry.getKey(),entry.getValue());
+				row.put("boolean", booleanProv);
+			}else if(i == 1 && lines.get(i) != "" && trioResult == true){
+				trioProv = lines.get(i);
+				for (Map.Entry<String, String> entry : mapTokens.entrySet())
+					trioProv = trioProv.replaceAll(entry.getKey(),entry.getValue());
+				row.put("trio", trioProv);
+			}else if(i == 2 && lines.get(i) != "" && why == true){
+				whyProv = lines.get(i);
+				for (Map.Entry<String, String> entry : mapTokens.entrySet())
+				whyProv = whyProv.replaceAll(entry.getKey(),entry.getValue());
+				row.put("why", posProv);
+			}else if(i == 3 && lines.get(i) != "" && posResult == true){
+				posProv = lines.get(i);
+				for (Map.Entry<String, String> entry : mapTokens.entrySet())
+					posProv = posProv.replaceAll(entry.getKey(),entry.getValue());
+				row.put("pos", posProv);
+			}
+		}
+		
+		if(lineageResult == true){
+			StringBuilder keysConcatenated = new StringBuilder();
+			for (String key : mapTokens.keySet()) {
+				if (keysConcatenated.length() > 0) {
+					keysConcatenated.append(", ");
+				}
+				keysConcatenated.append(key);
 			}
 
-		}		
+			lineageProv = "{"+ keysConcatenated.toString() +"}";
+			row.put("lineage", lineageProv);
+		}
 
-		return "{"+why+"}";
+		tempFile.delete();
 	}
 
-    private String callMathSolver(String path) throws IOException{
+    private void callMathSolver(String path) throws IOException{
 		 // Load the Python script from the resources
         InputStream inputStream = ResultProcess.class.getResourceAsStream("/mathSolver.py");
         if (inputStream == null) {
@@ -195,7 +245,21 @@ public class ResultProcess {
         }
 
         // Run the Python script using the `python` command
-        ProcessBuilder processBuilder = new ProcessBuilder("python3", tempFile.getAbsolutePath(), path);
+		List<String> commands = new ArrayList<>();
+		commands.add("/Users/paulopintor/.local/pipx/venvs/sympy/bin/Python3");
+		commands.add(tempFile.getAbsolutePath());
+		commands.add("-path");
+		commands.add(path);
+		commands.add("-wp");
+		commands.add(String.valueOf(why));
+		commands.add("-wb");
+		commands.add(String.valueOf(booleanResult));
+		commands.add("-wt");
+		commands.add(String.valueOf(trioResult));
+		commands.add("-wpos");
+		commands.add(String.valueOf(posResult));
+		
+        ProcessBuilder processBuilder = new ProcessBuilder(commands);
         Process process = processBuilder.start();
 
         // Capture the output
@@ -206,15 +270,22 @@ public class ResultProcess {
                 output.append(line).append(System.lineSeparator());
             }
         }
+		System.out.println(output.toString());
+
+		// Capture the error output from the script
+		StringBuilder error = new StringBuilder();
+		BufferedReader errorReader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
+		String errorLine;
+		while ((errorLine = errorReader.readLine()) != null) {
+			error.append(errorLine).append(System.lineSeparator());
+		}
 
         try {
             int exitCode = process.waitFor();
             if(exitCode != 0)
-                throw new IOException(output.toString());
+                throw new IOException(error.toString());
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            throw new IOException("Interrupted while waiting for the Python script to finish", e);
         }
-
-        return output.toString();
 	}
 }

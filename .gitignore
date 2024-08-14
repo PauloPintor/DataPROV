@@ -40,3 +40,4 @@ dataprov/target/surefire-reports/com.generic.provenance.AppTest.txt
 dataprov/target/surefire-reports/TEST-com.generic.provenance.AppTest.xml
 dataprov/target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst
 dataprov/src/main/java/com/dataprov/TestErrors.java
+dataprov/.settings/*
