@@ -211,7 +211,7 @@ public class ParserHelper {
     public String getAggFunction(String expression, char separator, String orderByColumn, String dbname){
 		if(dbname.toLowerCase().compareTo("trino") == 0)
 			if(orderByColumn == "")
-        		return String.format("listagg(%s, ' %c ') WITHIN GROUP", expression, separator);
+        		return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY 1)", expression, separator);
 			else
 				return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
 		else if(dbname.toLowerCase().compareTo("postgres") == 0)

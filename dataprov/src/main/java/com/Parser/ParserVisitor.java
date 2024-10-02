@@ -774,8 +774,8 @@ public class ParserVisitor {
 						// Create a new SubSelect
 						ParenthesedSelect subSelect = new ParenthesedSelect();
 						
-						selectItems = plainSelect.getSelectItems();
-						for(SelectItem<?> item : selectItems){
+						selectItems = new ArrayList<>();
+						for(SelectItem<?> item : plainSelect.getSelectItems()){
 							if(item.getExpression() instanceof Column){
 								Column _c = (Column) item.getExpression();
 								for(SelectItem<?> c : columnsInvolved.getColumns())
@@ -783,6 +783,8 @@ public class ParserVisitor {
 										selectItems.add(c);
 							}
 						}
+
+						
 						
 						plainSelect.setSelectItems(selectItems);
 						
@@ -961,6 +963,7 @@ public class ParserVisitor {
 				}else{
 					if(greaterThan.getLeftExpression() instanceof Column){
 						Column column = (Column) plainSelect.getSelectItems().get(0).getExpression();
+						_columns.add(column);
 						_newJoin = new GreaterThan();
 						((BinaryExpression) _newJoin).setLeftExpression(greaterThan.getLeftExpression());
 						((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), plainSelect.getSelectItem(0).getAlias() == null ? column.getColumnName() : plainSelect.getSelectItem(0).getAlias().getName()));
@@ -1347,10 +1350,25 @@ public class ParserVisitor {
 					plainSelect = (PlainSelect) ((ParenthesedSelect) minorThan.getRightExpression()).getSelect();
 					
 					if(minorThan.getLeftExpression() instanceof Column){
-						Column column = (Column) plainSelect.getSelectItems().get(0).getExpression();
+						String newColumnName = "";
+						int func = 0;
+						if(plainSelect.getSelectItems().get(0).getExpression() instanceof Column){
+							newColumnName = plainSelect.getSelectItem(0).getAlias() == null ? ((Column) plainSelect.getSelectItems().get(0).getExpression()).getColumnName() : plainSelect.getSelectItem(0).getAlias().getName();
+						}else if(plainSelect.getSelectItems().get(0).getExpression() instanceof Function){
+							if(plainSelect.getSelectItem(0).getAlias() == null)
+								plainSelect.getSelectItem(0).setAlias(new Alias("F"+func));
+							newColumnName = plainSelect.getSelectItem(0).getAlias().getName();
+							func ++;
+						}else{
+							if(plainSelect.getSelectItem(0).getAlias() == null)
+								plainSelect.getSelectItem(0).setAlias(new Alias("F"+func));
+							newColumnName = plainSelect.getSelectItem(0).getAlias().getName();
+							func ++;
+						}
+						
 						_newJoin = new MinorThan();
 						((BinaryExpression) _newJoin).setLeftExpression(minorThan.getLeftExpression());
-						((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), plainSelect.getSelectItem(0).getAlias() == null ? column.getColumnName() : plainSelect.getSelectItem(0).getAlias().getName()));
+						((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), newColumnName));
 					}else if(minorThan.getLeftExpression() instanceof ParenthesedExpressionList){
 						ParenthesedExpressionList<?> pel = (ParenthesedExpressionList<?>) minorThan.getLeftExpression();
 
@@ -1605,8 +1623,6 @@ public class ParserVisitor {
 
 				int i = 0;
 
-				
-
 				if(((AnyComparisonExpression) equalsTo.getRightExpression()).getAnyType() == AnyType.ALL){
 					List<SelectItem<?>> columnList = new ArrayList<>();
 					for(SelectItem<?> si : plainSelect.getSelectItems()){
@@ -1689,10 +1705,20 @@ public class ParserVisitor {
 					plainSelect = (PlainSelect) ((ParenthesedSelect) equalsTo.getRightExpression()).getSelect();
 					
 					if(equalsTo.getLeftExpression() instanceof Column){
-						Column column = (Column) plainSelect.getSelectItems().get(0).getExpression();
+						String newColumnName = "";
+						int func = 0;
+						if(plainSelect.getSelectItems().get(0).getExpression() instanceof Column){
+							newColumnName = plainSelect.getSelectItem(0).getAlias() == null ? ((Column) plainSelect.getSelectItems().get(0).getExpression()).getColumnName() : plainSelect.getSelectItem(0).getAlias().getName();
+						}else if(plainSelect.getSelectItems().get(0).getExpression() instanceof Function){
+							if(plainSelect.getSelectItem(0).getAlias() == null)
+								plainSelect.getSelectItem(0).setAlias(new Alias("F"+func));
+							newColumnName = plainSelect.getSelectItem(0).getAlias().getName();
+							func ++;
+						}
+
 						_newJoin = new EqualsTo();
 						((BinaryExpression) _newJoin).setLeftExpression(equalsTo.getLeftExpression());
-						((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), plainSelect.getSelectItem(0).getAlias() == null ? column.getColumnName() : plainSelect.getSelectItem(0).getAlias().getName()));
+						((BinaryExpression) _newJoin).setRightExpression(new Column(new Table("C"+count), newColumnName));
 					}else if(equalsTo.getLeftExpression() instanceof ParenthesedExpressionList){
 						ParenthesedExpressionList<?> pel = (ParenthesedExpressionList<?>) equalsTo.getLeftExpression();
 

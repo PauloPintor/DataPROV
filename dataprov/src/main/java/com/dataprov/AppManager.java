@@ -92,8 +92,8 @@ public class AppManager {
     }
 
 	public void execPostgresl(String query) throws Exception{
-		if(user.compareTo("") == 0 || password.compareTo("") == 0)
-			getUserPassword();
+		if(noResult == false && (user.compareTo("") == 0 || password.compareTo("") == 0))
+        	getUserPassword();		
 
 		long startTime = 0;
 		long endTime = 0;
@@ -116,8 +116,8 @@ public class AppManager {
     }
 
 	public ResultSet execPostgreslRS(String newQuery) throws Exception{
-		if(user.compareTo("") == 0 || password.compareTo("") == 0)
-			getUserPassword();
+		if(noResult == false && (user.compareTo("") == 0 || password.compareTo("") == 0))
+        	getUserPassword();		
 
 		long startTime = 0;
 		long endTime = 0;
@@ -138,8 +138,8 @@ public class AppManager {
     }
 
     public void exeTrino() throws Exception{
-        if(user.compareTo("") == 0 || password.compareTo("") == 0)
-			getUserPassword();
+        if(noResult == false && (user.compareTo("") == 0 || password.compareTo("") == 0))
+        	getUserPassword();		
 
 		long startTime = 0;
 		long endTime = 0;
@@ -149,7 +149,7 @@ public class AppManager {
 		}
 
         if(noResult)
-            parseQuery();
+			System.out.println(parseQuery());
 		else {
             TrinoHelper ph = new TrinoHelper(databaseURL, user, password, ssl);
 		    ResultSet result = ph.ExecuteQuery(noProvenance ? query : parseQuery());

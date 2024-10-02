@@ -22,6 +22,7 @@ import net.sf.jsqlparser.statement.select.SelectItem;
 import net.sf.jsqlparser.statement.select.SetOperation;
 import net.sf.jsqlparser.statement.select.SetOperationList;
 import net.sf.jsqlparser.statement.select.UnionOp;
+import net.sf.jsqlparser.statement.select.WithItem;
 
 import com.Helper.ParserHelper;
 import com.Parser.ParserVisitor.*;
@@ -129,6 +130,16 @@ public class Parser {
 			}
 		}
 
+		List<WithItem> withItemsList = newSelect.getWithItemsList();
+
+		if(withItemsList != null && !withItemsList.isEmpty()){
+			for(WithItem withItem : withItemsList){
+				PlainSelect withSelect = addAnnotations(withItem.getSelect(), false);
+				ParenthesedSelect parenthesedSelect = new ParenthesedSelect();
+				parenthesedSelect.setSelect(withSelect);
+				withItem.setSelect(parenthesedSelect);
+			}
+		}
 
 		return newSelect;
 	}
@@ -154,7 +165,10 @@ public class Parser {
 			ParenthesedSelect tempSubSelect = (ParenthesedSelect) plainSelect.getFromItem();
 			tempSubSelect.setSelect(addAnnotations(tempSubSelect.getSelect(), false));
 			
-			prov = tempSubSelect.getAlias().getName()+".prov ";			
+			if (tempSubSelect.getAlias() == null)
+				prov = "prov";
+			else
+				prov = tempSubSelect.getAlias().getName()+".prov ";			
 		}
 		
 		SelectItem<Column> newColumn = new SelectItem<Column>();
@@ -272,17 +286,18 @@ public class Parser {
 	 */
 	private PlainSelect UnionF(SetOperationList setOperationList) throws Exception {
 		ParserHelper pHelper = new ParserHelper();
-
-		List<SelectItem<?>> selectItems = pHelper.getUnionColumns(setOperationList.getSelects().get(0));
-
+		boolean unionAll = true;
 		for(Select select : setOperationList.getSelects()){
 			addAnnotations(select,false);
 		}
-
+		List<SelectItem<?>> selectItems = new ArrayList<>();
 		for(SetOperation op : setOperationList.getOperations()){
 			UnionOp union = (UnionOp) op;
-			if(union.isAll() == false)
+			if(union.isAll() == false){
 				union.setAll(true);
+				selectItems = pHelper.getUnionColumns(setOperationList.getSelects().get(0));
+				unionAll = false;
+			}
 		}
 
 		PlainSelect newSelect = new PlainSelect();
@@ -291,14 +306,16 @@ public class Parser {
 		parenthesedSelect.setAlias(new Alias("_un"));
 		newSelect.setFromItem(parenthesedSelect);
 		
-		ExpressionList<Column> groupByList = new ExpressionList<Column>();
-		for(SelectItem<?> ex : selectItems){
-			groupByList.addExpression((Column) ex.getExpression());
+		if(!unionAll){
+			ExpressionList<Column> groupByList = new ExpressionList<Column>();
+			for(SelectItem<?> ex : selectItems){
+				groupByList.addExpression((Column) ex.getExpression());
+			}
+			
+			GroupByElement groupBy = new GroupByElement();
+			groupBy.setGroupByExpressions(groupByList);
+			newSelect.setGroupByElement(groupBy);
 		}
-		
-		GroupByElement groupBy = new GroupByElement();
-		groupBy.setGroupByExpressions(groupByList);
-		newSelect.setGroupByElement(groupBy);
 
 		Column prov = new Column();
 		prov.setColumnName("prov");
