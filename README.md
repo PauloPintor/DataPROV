@@ -44,9 +44,9 @@ GROUP BY orders.o_orderpriority
 ORDER BY orders.o_orderpriority
 
 // APPLYING THE RULES TO OBTAIN HOW-PROVENANCE
-SELECT orders.o_orderpriority, count(*) AS order_count, STRING_AGG('orders:' || orders.prov|| ' ⊗ ' || nestedT0.prov || ' . ' || CAST(1 as varchar), ' ⊕ ' ORDER BY orders.o_orderpriority) AS prov 
+SELECT orders.o_orderpriority, count(*) AS order_count, STRING_AGG('orders:' || orders.prov|| ' ⊗ ' ||'(' || nestedT0.prov || ')' || ' .count ' || CAST(1 as varchar), ' ⊕ ' ORDER BY orders.o_orderpriority) AS prov 
 FROM orders JOIN (
-		SELECT orders.o_orderkey, LISTAGG(C0.prov , ' ⊕ ') WITHIN GROUP ORDER BY orders.o_orderkey AS prov 
+		SELECT orders.o_orderkey, LISTAGG(DISTNCT C0.prov , ' ⊕ ') WITHIN GROUP ORDER BY orders.o_orderkey AS prov 
 		FROM orders JOIN 
 		  	(SELECT lineitem.l_orderkey, 'lineitem:' || lineitem.prov AS prov 
 			 FROM lineitem 
