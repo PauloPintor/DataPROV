@@ -1,30 +1,56 @@
 import sympy
 import re
 
-def expansion(expression):
-    pattern = r'\b(\w+:\w+)\b'
+def expansion(provrow):
+	pattern = r'\b\w+:\w+[ )]'
+	i = 0
+	variables = {}
+	matches = re.findall(pattern, provrow)
+	for match in matches:
+		if match[-1] == ' ':
+			prov = 'x'+str(i)+' '
+			prov2 = 'x'+str(i)
+			newMatch = match[:-1]
+		elif match[-1] == ')':
+			prov = 'x'+str(i)+')'
+			prov2 = 'x'+str(i)
+			newMatch = match[:-1]
+		provrow = provrow.replace(match, prov)
+		
+		variables[prov2] = tuple(newMatch.split(":"))
+		i+=1
 
-    # Find all occurrences of the pattern
-    matches = re.findall(pattern, expression)
+	return sympy.expand(provrow), variables
 
-    # Create a dictionary to map each unique match to a variable (x1, x2, x3, ...)
-    variables = {}
-    for i, match in enumerate(sorted(set(matches)), start=1):  # sorted to keep order, set to avoid duplicates
-    #    variable_dict[match] = f'x{i}'
-        expression = expression.replace(match, f'x{i}')
-        variables[f'x{i}'] = tuple(match.split(":"))
+def noExp(provrow):
+	pattern = r'\b\w+:\w+[ )]'
+	i = 0
+	variables = {}
+	matches = re.findall(pattern, provrow)
+	for match in matches:
+		if match[-1] == ' ':
+			prov = 'x'+str(i)+' '
+			prov2 = 'x'+str(i)
+			newMatch = match[:-1]
+		elif match[-1] == ')':
+			prov = 'x'+str(i)+')'
+			prov2 = 'x'+str(i)
+			newMatch = match[:-1]
+		#provrow = re.sub(match, prov, provrow)
+		provrow = provrow.replace(match, prov)
+		
+		variables[prov2] = tuple(newMatch.split(":"))
+		i+=1
 
-    return sympy.expand(expression), variables
-    
-
+	return provrow, variables
+	
 def value(expression, val):
-    # Assumes all variables are equal to 1
-    pattern = r'\b(\w+:\w+)\b'
 
-    # Find all occurrences of the pattern
-    matches = re.findall(pattern, expression)
+	# Assumes all variables are equal to 1
+	pattern = r'\b(\w+:\w+)\b'
 
-    for i, match in enumerate(sorted(set(matches)), start=1):  # sorted to keep order, set to avoid duplicates
-        expression = expression.replace(match, str(val))
+	# Find all occurrences of the pattern
+	provrow = re.sub(pattern, '1', expression)
 
-    return(sympy.expand(expression))
+
+	return(sympy.expand(provrow))

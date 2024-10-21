@@ -1,3 +1,5 @@
+import re
+
 def isNumber(s):
     try:
         float(s)  # Try converting to float
@@ -6,22 +8,46 @@ def isNumber(s):
         return False
 
 def splitByTokenPLUS(polynomial):
-    return [t.strip() for t in polynomial.split("+")]
+	return [t.strip() for t in re.split(r'[+-]',polynomial)]
 
 def splitByTokenMULT(expression):
-    tokens = [t.strip() for t in expression.split("*")]
-    return [t for t in tokens if isNumber(t) == False and len(t) > 0]
+	while expression[0] == '(' and expression[-1] == ')':
+		expression = expression[1:-1]
 
-def composeSQLValidationStatement(token, variableDict, columns):
+	tokens = [t.strip() for t in expression.split("*")]
+	return [t for t in tokens if isNumber(t) == False and len(t) > 0]
 
-    tables = ', '.join('%s' % variableDict[t][0] for t in token)
-    conditions = " AND ".join("%s" % variableDict[t][0] + ".prov = '" + variableDict[t][1] + "'" for t in token)
-    regularColumns = ', '.join('%s' % t for t in columns[0])
-    aggregationColumns = ', '.join('%s' % t for t in columns[1])
+def composeSQLValidationStatement(token, variableDict, columns, columnsexp):
+	tablesList = []
+	i = 1
+	variableDict2 = {}
+	try:
+		i += 1
+		for t in token:
+			table = variableDict[t][0]
+			if table not in tablesList:
+				tablesList.append(table)
+				variableDict2[t] = (table, variableDict[t][1])
+			else:
+				i += 1
+				table = table +' ' +table[0] + str(i)
+				variableDict2[t] = (table[0] + str(i), variableDict[t][1])
+				tablesList.append(table)
+	except Exception as e:
+		print("Error: ", e)
 
-    statm = f"""
-        SELECT  {regularColumns}
-        FROM    {tables}  
-        WHERE   1 = 1 AND {conditions}
-    """
-    return statm
+	tables = ', '.join('%s' % t for t in tablesList)
+	conditions = " AND ".join("%s" % variableDict2[t][0] + ".prov = '" + variableDict2[t][1] + "'" for t in token)
+	if columnsexp != []:
+		regularColumns = ', '.join('%s' % t for t in columnsexp)
+	else:
+		regularColumns = ', '.join('%s' % t for t in columns[0])
+	aggregationColumns = ', '.join('%s' % t for t in columns[1])
+
+	statm = f"""
+		SELECT  {regularColumns.rstrip(', ')}
+		FROM    {tables}  
+		WHERE   1 = 1 AND {conditions}
+	"""
+	return statm
+
