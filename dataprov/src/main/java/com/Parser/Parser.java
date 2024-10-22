@@ -371,6 +371,9 @@ public class Parser {
 					String newColumnStr = "";
 					if(column.getTable() != null && column.getTable().getName().contains("_un")){
 						
+						/*
+						 * The need of the replace is for the Monoids to be possible to obtain the right result in AVGs or SUM / SUM or NUMBER / COUNT
+						 */
 						if(funcVisitor.getReplaceStr() == "")
 							newColumnStr = pHelper.getAggFunction(column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname);
 						else

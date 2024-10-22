@@ -73,6 +73,9 @@ public class ParserVisitor {
 						aggExpression += "|| ' .sum ' || CAST("+function.getParameters().toString()+" as varchar)";
 					}
 				}else if(function.getName().toLowerCase().equals("avg")){
+					/*
+					 * The need of '/avgt' and the replace is due to the monoids calculation being correct. With this change the result of AVG will be correct although it will be present as 'NUM/NUM'
+					 */
 					if(hasColumns(function.getParameters())){
 						hasFunction = true;
 						aggExpression += "|| ' .avg ' || CAST("+function.getParameters().toString()+" as varchar) || '/avgt'";
