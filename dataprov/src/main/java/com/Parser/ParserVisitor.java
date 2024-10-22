@@ -53,7 +53,9 @@ public class ParserVisitor {
 		private String aggExpression = "";
 		private boolean minMax = false;
 		private Column minMaxColumn = null;
-		
+		private String replaceStr = "";
+		private boolean coalesce = false;
+
 		@Override
 		public <S> Object visit(SelectItem<? extends Expression> selectItem, S context) {
 			if(selectItem.getExpression() instanceof Function){
@@ -61,7 +63,10 @@ public class ParserVisitor {
 
 				if(function.getName().toLowerCase().equals("count")){
 					hasFunction = true;
-					aggExpression += "|| ' .count ' || CAST(1 as varchar)";
+					if(coalesce && function.getParameters().toString().compareTo("*") != 0){
+						aggExpression += "|| (case when "+function.getParameters().toString()+" is null then '' else (' .count ' || CAST(1 as varchar)) end)";
+					}else
+						aggExpression += "|| ' .count ' || CAST(1 as varchar)";
 				}else if(function.getName().toLowerCase().equals("sum")){
 					if(hasColumns(function.getParameters())){
 						hasFunction = true;
@@ -70,7 +75,9 @@ public class ParserVisitor {
 				}else if(function.getName().toLowerCase().equals("avg")){
 					if(hasColumns(function.getParameters())){
 						hasFunction = true;
-						aggExpression += "|| ' .avg ' || CAST("+function.getParameters().toString()+" as varchar)";
+						aggExpression += "|| ' .avg ' || CAST("+function.getParameters().toString()+" as varchar) || '/avgt'";
+						if(replaceStr == "")
+							replaceStr = "CAST(COUNT(*) as varchar)";
 					}
 				}else if(function.getName().toLowerCase().equals("min") || function.getName().toLowerCase().equals("max")){
 					if(hasColumns(function.getParameters())){
@@ -83,7 +90,7 @@ public class ParserVisitor {
 
 						hasFunction = true;
 						minMax = true;
-						aggExpression += "|| ' "+ (function.getName().toLowerCase().equals("min") ? "min" : "max") +" ' || CAST("+function.getParameters().toString()+" as varchar)";
+						aggExpression += "|| ' "+ (function.getName().toLowerCase().equals("min") ? ".min" : ".max") +" ' || CAST("+function.getParameters().toString()+" as varchar)";
 					}
 				}
 
@@ -92,6 +99,8 @@ public class ParserVisitor {
 				if(tempAggexp != ""){
 					hasFunction = true;
 					aggExpression += "|| ' . ' || CAST("+tempAggexp+" as varchar)";
+					if(replaceStr != "")
+					aggExpression += "|| '/avgt'";
 				}
 			}
 			return context;
@@ -119,9 +128,10 @@ public class ParserVisitor {
 
 				if(divison.getRightExpression() instanceof Function){
 					Function function = (Function) divison.getRightExpression();
-					if(function.getName().toLowerCase().equals("sum")){
+					if(function.getName().toLowerCase().equals("sum") || function.getName().toLowerCase().equals("count")){
 						if(hasColumns(function.getParameters())){
-							arithExp += "/" + function.getParameters().toString();
+							// + function.getParameters().toString();
+							replaceStr = "CAST("+function.toString()+" as varchar)";
 							_hasFunction = true;
 						}
 					}
@@ -147,7 +157,12 @@ public class ParserVisitor {
 
 				if(multiplication.getRightExpression() instanceof Function){
 					Function function = (Function) multiplication.getRightExpression();
-					if(function.getName().toLowerCase().equals("sum") || function.getName().toLowerCase().equals("avg")){
+					if(function.getName().toLowerCase().equals("avg")){
+							arithExp += " * "+function.getParameters().toString();
+							if(replaceStr == "")
+								replaceStr = "CAST(COUNT(*) as varchar)";
+							_hasFunction = true;
+					}else if(function.getName().toLowerCase().equals("sum")){
 						if(hasColumns(function.getParameters())){
 							arithExp += "*" + function.getParameters().toString();
 							_hasFunction = true;
@@ -226,6 +241,14 @@ public class ParserVisitor {
 
 		public String getAggExpression() {
 			return aggExpression;
+		}
+
+		public String getReplaceStr() {
+			return replaceStr;
+		}
+
+		public void setCoalesce(boolean coalesce) {
+			this.coalesce = coalesce;
 		}
 	}
 
@@ -1609,6 +1632,19 @@ public class ParserVisitor {
 						newWhere = new OrExpression(newWhere, minorThanEquals);
 			}
 			super.visit(minorThanEquals, context);	
+			return null;
+		}
+
+		@Override
+		public <S> Void visit(LikeExpression likeExpression, S context){
+			if(newWhere == null)
+					newWhere = likeExpression;
+			else 
+				if (isInAndExpression)
+					newWhere = new AndExpression(newWhere, likeExpression);
+				else if (isInOrExpression)
+					newWhere = new OrExpression(newWhere, likeExpression);
+			super.visit(likeExpression, context);	
 			return null;
 		}
 

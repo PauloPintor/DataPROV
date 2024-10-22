@@ -211,9 +211,11 @@ public class ParserHelper {
     public String getAggFunction(String expression, char separator, String orderByColumn, String dbname){
 		if(dbname.toLowerCase().compareTo("trino") == 0)
 			if(orderByColumn == "")
-        		return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY 1)", expression, separator);
+				return String.format("array_join(array_agg(%s ORDER BY 1), ' %c ')", expression, separator);
+        		//return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY 1)", expression, separator);
 			else
-				return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
+				return String.format("array_join(array_agg(%s ORDER BY %s), ' %c ')", expression, orderByColumn, separator);
+				//return String.format("listagg(%s, ' %c ') WITHIN GROUP (ORDER BY %s)", expression, separator, orderByColumn);
 		else if(dbname.toLowerCase().compareTo("postgres") == 0)
 			if(orderByColumn == "")
 				return String.format("STRING_AGG(%s, ' %c ')", expression, separator, orderByColumn);
@@ -244,10 +246,17 @@ public class ParserHelper {
 			}
 		}
 
-		if(newSelectItems.size() == 1){
+		if(newSelectItems.size() >= 1){
 			if(newSelectItems.get(0) instanceof SelectItem){
 				SelectItem<?> selectItem = newSelectItems.get(0);
-				if(selectItem.getExpression() instanceof Function || selectItem.getExpression() instanceof Multiplication || selectItem.getExpression() instanceof Division){
+				if(selectItem.getExpression() instanceof Function){
+					Function func = (Function) selectItem.getExpression();
+					String functionName = func.getName().toUpperCase();
+					if(functionName.toUpperCase().equals("MIN") || functionName.toUpperCase().equals("MAX") || functionName.toUpperCase().equals("COUNT") || functionName.toUpperCase().equals("SUM") || functionName.toUpperCase().equals("AVG")){
+						result = true;
+					}else
+						result = false;
+				}else if(selectItem.getExpression() instanceof Multiplication || selectItem.getExpression() instanceof Division){
 					result = true;
 				}
 			}

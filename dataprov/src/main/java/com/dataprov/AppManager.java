@@ -299,4 +299,12 @@ public class AppManager {
 	public void setNoResult(boolean noResult) {
 		this.noResult = noResult;
 	}
+
+	public boolean withDbInfo() {
+		return withTbInfo;
+	}
+
+	public void setWithDbInfo(boolean withTbInfo) {
+		this.withTbInfo = withTbInfo;
+	}
 }

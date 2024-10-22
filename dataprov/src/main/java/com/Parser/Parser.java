@@ -37,6 +37,8 @@ public class Parser {
     private String dbname = "";
 	private boolean withTbInfo = false;
 	private boolean isAll = false;
+	private String lastFunc = "";
+	private boolean coalesce = false;
 	/**
 	 * The class constructor
 	 * 
@@ -124,9 +126,9 @@ public class Parser {
 
 			if(newSelect.getGroupBy() != null || hasFuncGroupBy)
 			{
-				newSelect = GroupByF(newSelect);
+				newSelect = GroupByF(newSelect, correlated);
 			}else if(newSelect.getDistinct() != null){
-				newSelect = DistinctF(newSelect);
+				newSelect = DistinctF(newSelect, correlated);
 			}
 		}
 
@@ -140,7 +142,7 @@ public class Parser {
 				withItem.setSelect(parenthesedSelect);
 			}
 		}
-
+		coalesce = false;
 		return newSelect;
 	}
 
@@ -153,6 +155,7 @@ public class Parser {
 	 */
 	private PlainSelect ProjectionSelectionF(PlainSelect plainSelect) throws Exception {
 		String prov = "";
+		lastFunc = "ProjectionSelectionF";
 		if(plainSelect.getFromItem() instanceof Table){
 			Table tempTable = (Table) plainSelect.getFromItem();
 			
@@ -192,7 +195,7 @@ public class Parser {
 	 */
 	private PlainSelect JoinF(PlainSelect plainSelect, boolean correlated) throws Exception {
 		String provToken = "";
-
+		lastFunc = "JoinF";
         if(plainSelect.getFromItem() instanceof Table)
         {
             Table tempTable = (Table) plainSelect.getFromItem();
@@ -207,9 +210,10 @@ public class Parser {
 			ParenthesedSelect tempSubSelect = (ParenthesedSelect) plainSelect.getFromItem();
 			tempSubSelect.setSelect(addAnnotations(tempSubSelect.getSelect(), false));
 			
-			provToken = tempSubSelect.getAlias().getName()+".prov ";
+			//provToken = "'('||" + tempSubSelect.getAlias().getName()+".prov " + "|| ')'";
+			provToken = tempSubSelect.getAlias().getName()+".prov";
 		}
-		boolean coalesce = false;
+		//boolean coalesce = false;
 
 		for(Join join : plainSelect.getJoins()) {
 			if(join.getRightItem() instanceof Table){            
@@ -221,7 +225,8 @@ public class Parser {
 					else
 						leftProv = (tempTable.getAlias() != null ? tempTable.getAlias() : tempTable.getFullyQualifiedName())+".prov";
 
-					provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+leftProv+" || ')', '(' ||"+provToken+"|| ')')";
+					//provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+leftProv+" || ')', '(' ||"+provToken+"|| ')')";
+					provToken = "COALESCE("+provToken + " || '"+(char) 0x2297+" ' || "+leftProv+" , "+provToken+")";
 					coalesce = true;
 				}else if(join.isRight()){
 					String rightProv;
@@ -231,7 +236,8 @@ public class Parser {
 					else
 						rightProv = (tempTable.getAlias() != null ? tempTable.getAlias().getName() : tempTable.getFullyQualifiedName())+".prov";
 
-					provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+rightProv+" || ')', '( ' || "+rightProv+") || ')')";
+					//provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+rightProv+" || ')', '( ' || "+rightProv+") || ')')";
+					provToken = "COALESCE(" + provToken + " || ' "+(char) 0x2297+" ' || "+rightProv+", "+rightProv+")";
 					coalesce = true;
 				}else{
 					if(withTbInfo)
@@ -241,33 +247,40 @@ public class Parser {
 				}
             }else{
 				ParenthesedSelect tempSubSelect = (ParenthesedSelect) join.getRightItem();
-				if(tempSubSelect.getAlias() != null && tempSubSelect.getAlias().getName().contains("nestedT"))
+				if(tempSubSelect.getAlias() != null && tempSubSelect.getAlias().getName().contains("nestedT")){
 					tempSubSelect.setSelect(addAnnotations(tempSubSelect, true));
-				else
+				}else
 					tempSubSelect.setSelect(addAnnotations(tempSubSelect,false));
 			
 				if(join.isLeft()){
-					provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov || ')', '(' || "+provToken+"|| ')')";
+					//provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov || ')', '(' || "+provToken+"|| ')')";
+					provToken = "COALESCE(" + provToken + " || ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov, "+provToken+")";
 					
 					coalesce = true;	
 				}
 				else if(join.isRight()){
-					provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov|| ')', '(' || "+tempSubSelect.getAlias().getName()+".prov || ')')";
+					//provToken = "COALESCE('(' || " + provToken + " || ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov|| ')', '(' || "+tempSubSelect.getAlias().getName()+".prov || ')')";
+					provToken = "COALESCE(" + provToken + " || ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov, "+tempSubSelect.getAlias().getName()+".prov)";
 					
 					coalesce = true;
 				}
 				else if(correlated){
 					provToken = tempSubSelect.getAlias().getName()+".prov";
-				}else{
-					provToken = provToken + "|| ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov";
+				/* }else if(tempSubSelect.getAlias().getName().contains("nestedT")){
+					provToken = provToken + " || ' "+(char) 0x2297+" ' || '(' || "+tempSubSelect.getAlias().getName()+".prov || ')'";
+*/
+				}
+				else{
+					provToken = provToken + " || ' "+(char) 0x2297+" ' || '(' || "+tempSubSelect.getAlias().getName()+".prov || ')'";
+					//provToken = provToken + "|| ' "+(char) 0x2297+" ' || "+tempSubSelect.getAlias().getName()+".prov";
 				}
 
 			}
 			
 		}
 
-		if(!coalesce && !correlated)
-			provToken = "'(' || "+provToken+" || ')'";
+		//if(!coalesce && !correlated)
+		//	provToken = "'(' || "+provToken+" || ')'";
 		
 		SelectItem<Column> newColumn = new SelectItem<Column>();
 		newColumn.setExpression(new Column(provToken));
@@ -287,15 +300,18 @@ public class Parser {
 	private PlainSelect UnionF(SetOperationList setOperationList) throws Exception {
 		ParserHelper pHelper = new ParserHelper();
 		boolean unionAll = true;
+		lastFunc = "UnionF";
+		List<SelectItem<?>> selectItems = new ArrayList<>();
+		selectItems = pHelper.getUnionColumns(setOperationList.getSelects().get(0));
+
 		for(Select select : setOperationList.getSelects()){
 			addAnnotations(select,false);
 		}
-		List<SelectItem<?>> selectItems = new ArrayList<>();
+		
 		for(SetOperation op : setOperationList.getOperations()){
 			UnionOp union = (UnionOp) op;
 			if(union.isAll() == false){
 				union.setAll(true);
-				selectItems = pHelper.getUnionColumns(setOperationList.getSelects().get(0));
 				unionAll = false;
 			}
 		}
@@ -314,13 +330,13 @@ public class Parser {
 			
 			GroupByElement groupBy = new GroupByElement();
 			groupBy.setGroupByExpressions(groupByList);
-			newSelect.setGroupByElement(groupBy);
+			newSelect.setGroupByElement(groupBy);		
+			
 		}
-
 		Column prov = new Column();
 		prov.setColumnName("prov");
 		prov.setTable(new Table("_un"));
-		
+
 		SelectItem<Column> provItem  = new SelectItem<Column>(prov);
 		provItem.setAlias(new Alias("prov"));
 		selectItems.add(provItem);
@@ -336,11 +352,12 @@ public class Parser {
 	 * @return a PlainSelect object with the annotations
 	 * @throws Exception
 	 */
-	private PlainSelect GroupByF(PlainSelect newSelect) throws Exception {
+	private PlainSelect GroupByF(PlainSelect newSelect, boolean correlated) throws Exception {
 		ParserHelper pHelper = new ParserHelper();		
 
 		String aggFunction = "";
 		FunctionProjection funcVisitor = new FunctionProjection();
+		funcVisitor.setCoalesce(coalesce);
 		newSelect.getSelectItems().forEach(item -> item.accept(funcVisitor, null));
 		if(funcVisitor.hasFunction() && !isAll) aggFunction = funcVisitor.getAggExpression();
 
@@ -351,14 +368,35 @@ public class Parser {
 				if(selectItem.getAlias() != null && selectItem.getAlias().getName() == "prov")
 				{
 					Column column = (Column) selectItem.getExpression();
-					
+					String newColumnStr = "";
 					if(column.getTable() != null && column.getTable().getName().contains("_un")){
-						SelectItem<Column> newColumn = new SelectItem<Column>(new Column(pHelper.getAggFunction(column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname)));
+						
+						if(funcVisitor.getReplaceStr() == "")
+							newColumnStr = pHelper.getAggFunction(column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname);
+						else
+							newColumnStr = "REPLACE("+pHelper.getAggFunction(column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname)+", 'avgt', "+funcVisitor.getReplaceStr() +")";
+						SelectItem<Column> newColumn = new SelectItem<Column>(new Column(newColumnStr));
 						newColumn.setAlias(new Alias("prov"));
 						newSelectItems.add(newColumn);		
 						
 					}else{
-						SelectItem<Column> newColumn = new SelectItem<Column>(new Column("'(' ||"+pHelper.getAggFunction(column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname)+"|| ')'"));
+						SelectItem<Column> newColumn = null;
+						String distinct = "";
+						if(correlated) distinct = "DISTINCT ";
+						if(lastFunc == "ProjectionSelectionF" || correlated){
+							if(funcVisitor.getReplaceStr() == "")
+								newColumnStr = pHelper.getAggFunction(distinct+column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname);
+							else
+								newColumnStr = "REPLACE("+pHelper.getAggFunction(distinct+ column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname)+", 'avgt', "+funcVisitor.getReplaceStr() +")";
+							newColumn = new SelectItem<Column>(new Column(newColumnStr));
+						}else{
+							if(funcVisitor.getReplaceStr() == "")
+								newColumnStr = pHelper.getAggFunction("'(' ||"+column.toString() +"|| ')'"+ " " +aggFunction, (char) 0x2295, firstColumn, dbname);
+							else
+								newColumnStr = "REPLACE("+pHelper.getAggFunction("'(' ||"+column.toString() +"|| ')'"+ " " +aggFunction, (char) 0x2295, firstColumn, dbname)+", 'avgt', "+funcVisitor.getReplaceStr() +")";
+							newColumn = new SelectItem<Column>(new Column(newColumnStr));
+						}
+						//SelectItem<Column> newColumn = new SelectItem<Column>(new Column(pHelper.getAggFunction(column.toString() + " " +aggFunction, (char) 0x2295, firstColumn, dbname)));
 						newColumn.setAlias(new Alias("prov"));
 						newSelectItems.add(newColumn);		
 						
@@ -470,7 +508,7 @@ public class Parser {
 	 * @return a PlainSelect object with the changes and the rules of Distinct
 	 * @throws Exception
 	 */
-	private PlainSelect DistinctF(PlainSelect newSelect) throws Exception {
+	private PlainSelect DistinctF(PlainSelect newSelect, boolean correlated) throws Exception {
 		ParserHelper pHelper = new ParserHelper();		
 
 		ExpressionList<Column> groupByList = new ExpressionList<>();
@@ -483,7 +521,13 @@ public class Parser {
 			if(selectItem.getAlias() != null && selectItem.getAlias().getName() == "prov")
 			{
 				Column column = (Column) selectItem.getExpression();
-				SelectItem<Column> newColumn = new SelectItem<Column>(new Column("'(' ||"+pHelper.getAggFunction(column.toString(), (char) 0x2295, firstColumn, dbname)+"|| ')'"));
+				SelectItem<Column> newColumn = null;
+						
+				if(lastFunc == "ProjectionSelectionF" || correlated)
+					newColumn = new SelectItem<Column>(new Column(pHelper.getAggFunction(column.toString(), (char) 0x2295, firstColumn, dbname)));
+				else
+					newColumn = new SelectItem<Column>(new Column(pHelper.getAggFunction("'(' ||"+column.toString()+"|| ')'", (char) 0x2295, firstColumn, dbname)));
+				
 				newColumn.setAlias(new Alias("prov"));
 				newSelectItems.add(newColumn);
 			}else if(selectItem.getExpression() instanceof Column){
