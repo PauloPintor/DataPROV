@@ -19,7 +19,7 @@ public class App
 		boolean noProvenance = false;
 		boolean printHelp = false;
         boolean noResult = false;
-		boolean yael = false;
+		boolean originalResult = false;
 
 		for (int i = 0; i < args.length; i++) {
             if (i <= args.length - 1) {
@@ -60,6 +60,9 @@ public class App
                 }else if (args[i].toLowerCase().equals("-nr")) {
                     if(args[i + 1].toLowerCase().equals("true") || args[i + 1].toLowerCase().equals("t"))
 						noResult = true;
+                }else if (args[i].toLowerCase().equals("-or")) {
+                    if(args[i + 1].toLowerCase().equals("true") || args[i + 1].toLowerCase().equals("t"))
+						originalResult = true;
                 }
                 
             }
@@ -82,7 +85,7 @@ public class App
                 System.out.println();
             }
 			
-			AppManager app = new AppManager(database, databaseURL, query, withWhy, withBoolean, withTrio, withPos, withLineage, withTrasnform, withTime, noProvenance, noResult, withBdInfo, yael);
+			AppManager app = new AppManager(database, databaseURL, query, withWhy, withBoolean, withTrio, withPos, withLineage, withTrasnform, withTime, noProvenance, noResult, withBdInfo, originalResult);
 		}
     }
 

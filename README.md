@@ -2,10 +2,10 @@
 A middleware solution to capture data provenance in centralized and distributed environments, using annotations propagation and query rewriting.
 
 ## USAGE	
-The solution receives as parameters the database, database URL, and the query to parse. It also has optional parameters: -wb If true, the boolean provenance (B[X]) is computed; -wt If true, the trio provenance (Trio(X)) is computed; -wp If true, the why-provenance is computed; -wpos If true, the positive boolean provenance (PosBool(X)) is computed; -wl If true, the lineage provenance (Lin(X)) is computed; -t If true, the execution time is computed; -nq If true, the transformed query is printed; -np If true, the provenance is not computed; -dbi If true, the provenance tokens will contain database information (database:schema:table:token). An example of the command is the following:
+The solution receives as parameters the database, database URL, and the query to parse. It also has optional parameters: -wb If true, the boolean provenance (B[X]) is computed; -wt If true, the trio provenance (Trio(X)) is computed; -wp If true, the why-provenance is computed; -wpos If true, the positive boolean provenance (PosBool(X)) is computed; -wl If true, the lineage provenance (Lin(X)) is computed; -t If true, the execution time is computed; -nq If true, the transformed query is printed; -np If true, the provenance is not computed; -dbi If true, the provenance tokens will contain database information (database:schema:table:token); -or If true, the result has the original result, in case of false it shows the result with 1k or 0k. An example of the command is the following:
 
 
-    java dataprov.jar -d [DATABASE] -u [DATABASE_URL] -q [QUERY] [-wb/wt/wp/wpos/wlin [TRUE/FALSE - default false] -t [TRUE/FALSE - default false] -nq [TRUE/FALSE - default false] -np [TRUE/FALSE - default false] -dbi [TRUE/FALSE - default false]]
+    java dataprov.jar -d [DATABASE] -u [DATABASE_URL] -q [QUERY] -wb/wt/wp/wpos/wlin [TRUE/FALSE - default false] -t [TRUE/FALSE - default false] -nq [TRUE/FALSE - default false] -np [TRUE/FALSE - default false] -dbi [TRUE/FALSE - default false] -or [TRUE/FALSE - default false]
 
 After the command, it will be asked for the username and password.
 
@@ -32,30 +32,35 @@ The queries used in the experimental evaluation are available in the "queries" f
 Below is an example of a query (TPC-H / Query 4) and the new query with the transformations made by the solution.
 
 ```sql
-SELECT orders.o_orderpriority, count(*) as order_count 
-FROM orders 
-WHERE orders.o_orderdate >= date '1993-07-01' 
-  AND orders.o_orderdate < date '1993-07-01' + interval '3' month 
-  AND EXISTS ( 	SELECT * 
-	       	FROM lineitem 
-		WHERE lineitem.l_orderkey = orders.o_orderkey 
-		AND lineitem.l_commitdate < lineitem.l_receiptdate) 
-GROUP BY orders.o_orderpriority 
-ORDER BY orders.o_orderpriority
+select supplier.s_acctbal, supplier.s_name, nation.n_name, part.p_partkey, part.p_mfgr, supplier.s_address, supplier.s_phone, supplier.s_comment 
+from part, supplier, partsupp, nation, region 
+where part.p_partkey = partsupp.ps_partkey 
+  and supplier.s_suppkey = partsupp.ps_suppkey 
+  and part.p_size = 33 
+  and part.p_type like '%BRASS' 
+  and supplier.s_nationkey = nation.n_nationkey 
+  and nation.n_regionkey = region.r_regionkey 
+  and region.r_name = 'ASIA' 
+  and partsupp.ps_supplycost = (select min(partsupp.ps_supplycost) 
+  								from partsupp, supplier, nation, region 
+								where part.p_partkey = partsupp.ps_partkey 
+								and supplier.s_suppkey = partsupp.ps_suppkey 
+								and supplier.s_nationkey = nation.n_nationkey 
+								and nation.n_regionkey = region.r_regionkey 
+								and region.r_name = 'ASIA') 
+order by supplier.s_acctbal desc, nation.n_name, supplier.s_name, part.p_partkey 
+LIMIT 100
 
-// APPLYING THE RULES TO OBTAIN HOW-PROVENANCE
-SELECT orders.o_orderpriority, count(*) AS order_count, STRING_AGG('orders:' || orders.prov|| ' ⊗ ' ||'(' || nestedT0.prov || ')' || ' .count ' || CAST(1 as varchar), ' ⊕ ' ORDER BY orders.o_orderpriority) AS prov 
-FROM orders JOIN (
-		SELECT orders.o_orderkey, LISTAGG(DISTNCT C0.prov , ' ⊕ ') WITHIN GROUP ORDER BY orders.o_orderkey AS prov 
-		FROM orders JOIN 
-		  	(SELECT lineitem.l_orderkey, 'lineitem:' || lineitem.prov AS prov 
-			 FROM lineitem 
-			 WHERE lineitem.l_commitdate < lineitem.l_receiptdate
-			) AS C0 ON C0.l_orderkey = orders.o_orderkey
-		GROUP BY orders.o_orderkey
-		) AS nestedT0 ON orders.o_orderkey = nestedT0.l_orderkey 
-WHERE orders.o_orderdate >= DATE '1993-03-01' AND orders.o_orderdate < DATE '1993-03-01' + INTERVAL '3' month 
-GROUP BY orders.o_orderpriority ORDER BY orders.o_orderpriority
+// APPLYING THE RULES TO OBTAIN PROVENANCE POLYNOMIALS
+SELECT supplier.s_acctbal, supplier.s_name, nation.n_name, part.p_partkey, part.p_mfgr, supplier.s_address, supplier.s_phone, supplier.s_comment, part.prov || ' . ' || partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov || ' . ' || '(' || C0.prov || ')'||'. [' || C0.F0|| '= 1 ⊗' || partsupp.ps_supplycost|| ']' AS prov 
+FROM part INNER JOIN partsupp ON part.p_partkey = partsupp.ps_partkey INNER JOIN supplier ON supplier.s_suppkey = partsupp.ps_suppkey INNER JOIN nation ON supplier.s_nationkey = nation.n_nationkey INNER JOIN region ON nation.n_regionkey = region.r_regionkey INNER JOIN (SELECT partsupp.ps_partkey, STRING_AGG(CONCAT('(',partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov, ')', ' ⊗ ', partsupp.ps_supplycost), ' +min ') AS F0, CONCAT('δ(',STRING_AGG(partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov, ' + '),')') AS prov 
+						FROM partsupp INNER JOIN supplier ON supplier.s_suppkey = partsupp.ps_suppkey INNER JOIN nation ON supplier.s_nationkey = nation.n_nationkey INNER JOIN region ON nation.n_regionkey = region.r_regionkey 
+						WHERE region.r_name = 'ASIA' GROUP BY partsupp.ps_partkey) AS C0 ON part.p_partkey = C0.ps_partkey 
+WHERE part.p_size = 33 
+	AND part.p_type LIKE '%BRASS' 
+	AND region.r_name = 'ASIA' 
+ORDER BY supplier.s_acctbal DESC, nation.n_name, supplier.s_name, part.p_partkey 
+LIMIT 100
 
 ```
 
