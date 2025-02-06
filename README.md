@@ -42,20 +42,24 @@ where part.p_partkey = partsupp.ps_partkey
   and nation.n_regionkey = region.r_regionkey 
   and region.r_name = 'ASIA' 
   and partsupp.ps_supplycost = (select min(partsupp.ps_supplycost) 
-  								from partsupp, supplier, nation, region 
-								where part.p_partkey = partsupp.ps_partkey 
-								and supplier.s_suppkey = partsupp.ps_suppkey 
-								and supplier.s_nationkey = nation.n_nationkey 
-								and nation.n_regionkey = region.r_regionkey 
-								and region.r_name = 'ASIA') 
+	from partsupp, supplier, nation, region 
+	where part.p_partkey = partsupp.ps_partkey 
+	and supplier.s_suppkey = partsupp.ps_suppkey 
+	and supplier.s_nationkey = nation.n_nationkey 
+	and nation.n_regionkey = region.r_regionkey 
+	and region.r_name = 'ASIA') 
 order by supplier.s_acctbal desc, nation.n_name, supplier.s_name, part.p_partkey 
 LIMIT 100
 
 // APPLYING THE RULES TO OBTAIN PROVENANCE POLYNOMIALS
 SELECT supplier.s_acctbal, supplier.s_name, nation.n_name, part.p_partkey, part.p_mfgr, supplier.s_address, supplier.s_phone, supplier.s_comment, part.prov || ' . ' || partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov || ' . ' || '(' || C0.prov || ')'||'. [' || C0.F0|| '= 1 ⊗' || partsupp.ps_supplycost|| ']' AS prov 
-FROM part INNER JOIN partsupp ON part.p_partkey = partsupp.ps_partkey INNER JOIN supplier ON supplier.s_suppkey = partsupp.ps_suppkey INNER JOIN nation ON supplier.s_nationkey = nation.n_nationkey INNER JOIN region ON nation.n_regionkey = region.r_regionkey INNER JOIN (SELECT partsupp.ps_partkey, STRING_AGG(CONCAT('(',partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov, ')', ' ⊗ ', partsupp.ps_supplycost), ' +min ') AS F0, CONCAT('δ(',STRING_AGG(partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov, ' + '),')') AS prov 
-						FROM partsupp INNER JOIN supplier ON supplier.s_suppkey = partsupp.ps_suppkey INNER JOIN nation ON supplier.s_nationkey = nation.n_nationkey INNER JOIN region ON nation.n_regionkey = region.r_regionkey 
-						WHERE region.r_name = 'ASIA' GROUP BY partsupp.ps_partkey) AS C0 ON part.p_partkey = C0.ps_partkey 
+FROM part INNER JOIN partsupp ON part.p_partkey = partsupp.ps_partkey 
+          INNER JOIN supplier ON supplier.s_suppkey = partsupp.ps_suppkey 
+		  INNER JOIN nation ON supplier.s_nationkey = nation.n_nationkey 
+		  INNER JOIN region ON nation.n_regionkey = region.r_regionkey 
+		  INNER JOIN (SELECT partsupp.ps_partkey, STRING_AGG(CONCAT('(',partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov, ')', ' ⊗ ', partsupp.ps_supplycost), ' +min ') AS F0, CONCAT('δ(',STRING_AGG(partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov, ' + '),')') AS prov 
+				FROM partsupp INNER JOIN supplier ON supplier.s_suppkey = partsupp.ps_suppkey INNER JOIN nation ON supplier.s_nationkey = nation.n_nationkey INNER JOIN region ON nation.n_regionkey = region.r_regionkey 
+				WHERE region.r_name = 'ASIA' GROUP BY partsupp.ps_partkey) AS C0 ON part.p_partkey = C0.ps_partkey 
 WHERE part.p_size = 33 
 	AND part.p_type LIKE '%BRASS' 
 	AND region.r_name = 'ASIA' 
