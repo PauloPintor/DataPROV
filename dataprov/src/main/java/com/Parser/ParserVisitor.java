@@ -388,6 +388,15 @@ public class ParserVisitor {
 					else
 						return "' . [' || " + columnL.getFullyQualifiedName(false) + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + columnR.getFullyQualifiedName(false) + "|| ']'";
 				}else if(!isFunc(columnL) && isFunc(columnR)){
+					if (operator.equals(">"))
+						operator = "<";
+					else if(operator.equals("<"))
+						operator = ">";
+					else if(operator.equals(">="))
+						operator = "<=";
+					else if(operator.equals("<="))
+						operator = ">=";
+
 					if (originalResult) 
 						return "' . [' || " + columnR.getFullyQualifiedName(false) + "_agg" + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + columnL.getFullyQualifiedName(false) + "|| ']'";
 					else
@@ -399,6 +408,14 @@ public class ParserVisitor {
 					else
 						return "' . [' || " + ((Column) left).getFullyQualifiedName(false) + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + right.toString() + "|| ']'";
 			}else if(!(left instanceof Column) && right instanceof Column && isFunc((Column) right)){
+				if (operator.equals(">"))
+						operator = "<";
+					else if(operator.equals("<"))
+						operator = ">";
+					else if(operator.equals(">="))
+						operator = "<=";
+					else if(operator.equals("<="))
+						operator = ">=";
 				if (originalResult) 
 						return "' . [' || " + ((Column) right).getFullyQualifiedName(false) + "_agg" + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + right.toString() + "|| ']'";
 					else

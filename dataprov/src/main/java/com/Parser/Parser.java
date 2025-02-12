@@ -785,7 +785,7 @@ public class Parser {
 				}
 				surrondSelect.addGroupByColumnReference(new Column(new Table(newNestedTable+"_2"), "cnt1"));
 				surrondSelect.addGroupByColumnReference(new Column(new Table(newNestedTable+"_2"), "cnt2"));
-
+				surrondSelect.addGroupByColumnReference(new Column(new Table(newNestedTable+"_2"), "prov"));
 				
 				CaseExpression caseExpression = new CaseExpression();
 				WhenClause whenClause = new WhenClause();
