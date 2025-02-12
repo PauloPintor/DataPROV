@@ -58,8 +58,10 @@ FROM part INNER JOIN partsupp ON part.p_partkey = partsupp.ps_partkey
 		  INNER JOIN nation ON supplier.s_nationkey = nation.n_nationkey 
 		  INNER JOIN region ON nation.n_regionkey = region.r_regionkey 
 		  INNER JOIN (SELECT partsupp.ps_partkey, STRING_AGG(CONCAT('(',partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov, ')', ' ⊗ ', partsupp.ps_supplycost), ' +min ') AS F0, CONCAT('δ(',STRING_AGG(partsupp.prov || ' . ' || supplier.prov || ' . ' || nation.prov || ' . ' || region.prov, ' + '),')') AS prov 
-				FROM partsupp INNER JOIN supplier ON supplier.s_suppkey = partsupp.ps_suppkey INNER JOIN nation ON supplier.s_nationkey = nation.n_nationkey INNER JOIN region ON nation.n_regionkey = region.r_regionkey 
-				WHERE region.r_name = 'ASIA' GROUP BY partsupp.ps_partkey) AS C0 ON part.p_partkey = C0.ps_partkey 
+			FROM partsupp INNER JOIN supplier ON supplier.s_suppkey = partsupp.ps_suppkey 
+			INNER JOIN nation ON supplier.s_nationkey = nation.n_nationkey 
+			INNER JOIN region ON nation.n_regionkey = region.r_regionkey 
+			WHERE region.r_name = 'ASIA' GROUP BY partsupp.ps_partkey) AS C0 ON part.p_partkey = C0.ps_partkey 
 WHERE part.p_size = 33 
 	AND part.p_type LIKE '%BRASS' 
 	AND region.r_name = 'ASIA' 

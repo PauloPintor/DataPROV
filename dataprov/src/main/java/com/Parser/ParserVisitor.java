@@ -379,30 +379,30 @@ public class ParserVisitor {
 
 				if(isFunc(columnL) && isFunc(columnR)){
 					if (originalResult) 
-						return "'. [' || " + columnL.getFullyQualifiedName(false) + "_agg" + "|| '" + operator + "' || " + columnR.getFullyQualifiedName(false) + "_agg" + "|| ']'";
+						return "' . [' || " + columnL.getFullyQualifiedName(false) + "_agg" + "|| '" + operator + "' || " + columnR.getFullyQualifiedName(false) + "_agg" + "|| ']'";
 					else
-						return "'. [' || " + columnL.getFullyQualifiedName(false) + "|| '" + operator + "' || " + columnR.getFullyQualifiedName(false) + "|| ']'";
+						return "' . [' || " + columnL.getFullyQualifiedName(false) + "|| '" + operator + "' || " + columnR.getFullyQualifiedName(false) + "|| ']'";
 				}else if(isFunc(columnL) && !isFunc(columnR)){
 					if (originalResult) 
-						return "'. [' || " + columnL.getFullyQualifiedName(false) + "_agg" + "|| '" + operator +" 1 " + (char) 0x2297 + "' || " + columnR.getFullyQualifiedName(false) + "|| ']'";
+						return "' . [' || " + columnL.getFullyQualifiedName(false) + "_agg" + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + columnR.getFullyQualifiedName(false) + "|| ']'";
 					else
-						return "'. [' || " + columnL.getFullyQualifiedName(false) + "|| '" + operator +" 1 " + (char) 0x2297 + "' || " + columnR.getFullyQualifiedName(false) + "|| ']'";
+						return "' . [' || " + columnL.getFullyQualifiedName(false) + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + columnR.getFullyQualifiedName(false) + "|| ']'";
 				}else if(!isFunc(columnL) && isFunc(columnR)){
 					if (originalResult) 
-						return "'. [' || " + columnR.getFullyQualifiedName(false) + "_agg" + "|| '" + operator +" 1 " + (char) 0x2297 + "' || " + columnL.getFullyQualifiedName(false) + "|| ']'";
+						return "' . [' || " + columnR.getFullyQualifiedName(false) + "_agg" + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + columnL.getFullyQualifiedName(false) + "|| ']'";
 					else
-						return "'. [' || " + columnR.getFullyQualifiedName(false) + "|| '" + operator +" 1 " + (char) 0x2297 + "' || " + columnL.getFullyQualifiedName(false) + "|| ']'";
+						return "' . [' || " + columnR.getFullyQualifiedName(false) + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + columnL.getFullyQualifiedName(false) + "|| ']'";
 				}
 			}else if(left instanceof Column && !(right instanceof Column) && isFunc((Column) left)){
 				if (originalResult) 
-						return "'. [' || " + ((Column) left).getFullyQualifiedName(false) + "_agg" + "|| '" + operator +" 1 " + (char) 0x2297 +  "' || " + right.toString() + "|| ']'";
+						return "' . [' || " + ((Column) left).getFullyQualifiedName(false) + "_agg" + "|| ' " + operator +" 1 " + (char) 0x2297 +  "' || " + right.toString() + "|| ']'";
 					else
-						return "'. [' || " + ((Column) left).getFullyQualifiedName(false) + "|| '" + operator +" 1 " + (char) 0x2297 + "' || " + right.toString() + "|| ']'";
+						return "' . [' || " + ((Column) left).getFullyQualifiedName(false) + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + right.toString() + "|| ']'";
 			}else if(!(left instanceof Column) && right instanceof Column && isFunc((Column) right)){
 				if (originalResult) 
-						return "'. [' || " + ((Column) right).getFullyQualifiedName(false) + "_agg" + "|| '" + operator +" 1 " + (char) 0x2297 + "' || " + right.toString() + "|| ']'";
+						return "' . [' || " + ((Column) right).getFullyQualifiedName(false) + "_agg" + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + right.toString() + "|| ']'";
 					else
-						return "'. [' || " + ((Column) right).getFullyQualifiedName(false) + "|| '" + operator +" 1 " + (char) 0x2297 + "' || " + right.toString() + "|| ']'";
+						return "' . [' || " + ((Column) right).getFullyQualifiedName(false) + "|| ' " + operator +" 1 " + (char) 0x2297 + "' || " + right.toString() + "|| ']'";
 			}
 			return "";
 
@@ -439,6 +439,7 @@ public class ParserVisitor {
 							return true;
 						}
 					}else{
+						if(plainSelect.getJoins() != null){
 						for(Join join : plainSelect.getJoins()){
 							if(join.getRightItem() instanceof ParenthesedSelect && join.getRightItem().getAlias().getName().equals(column.getTable().getName())){
 								List<SelectItem<?>> selectItems = ((PlainSelect) ((ParenthesedSelect) join.getRightItem()).getSelect()).getSelectItems();
@@ -465,6 +466,7 @@ public class ParserVisitor {
 								}
 							}
 						}
+					}
 					}
 				}
 			} catch (JSQLParserException e) {

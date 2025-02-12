@@ -1,138 +1,284 @@
-import Database.dbFunctions as db
-import Examples.queriesWithProvenance as examples
-import ProvenanceHandler.provProcessor as prov
-import ProvenanceHandler.polyProcessor as poly
+import json
 import re
-import math
+import pandas as pd
+import sympy
+import sys
+import numpy as np
+
+import DatabaseHelper.dbConnectionHelper as db
+import PolynomialHelper.solvePolynomials as poly
+import PolynomialHelper.solveProvenance as prov
+import PolynomialHelper.mapTokens as mt
 
 
-for example in range(1, 37):
-	# List the numbers of the queries to validate
-	print(f'>>> Query {example}...', end = ' ')
-	query, columns = examples.getQuery(example)
+def validateRow(prov):
+    # Example string (shortened for readability)
 
-	# Query result
-	res, colnames = db.executeQuery(query)
+    # Split while keeping the closing bracket "]"
+    parts = re.split(r"]\s+\+", prov)
 
-	# Process provenance polynomial
-	valid = True
-	for row in range(len(res)):
-		newrow = res[row][-1].replace('\u2295', ' + ').replace('\u2297', ' * ')
+    # Add back the "]" at the end of each split part except the last one (it already has it)
+    parts = [part + "]" if not part.endswith("]") else part for part in parts]
+    parts[0] = parts[0][2:]
+    parts[-1] = parts[-1][:-2]
+    if len(parts) > 1:
+        newProv = []
+        newAgg = []
+        for part in parts:
+            pattern = r"\. \[(.*?)\]"
+            symbExpressions = re.findall(pattern, part)
 
-		#res_prov = re.sub(r"\.\s*(min|max|count|sum|avg)?\s*[- ]\d+(\.\d+)?([eE][-+]?\d+)?", "", newrow)
-		if '/' in newrow:
-			res_prov = re.sub(r"\.\s*(min|max|count|sum|avg)?\s*\d+(\.\d+)?([eE][-+]?\d+)?/\d+(\.\d+)?", "", newrow)
-		else:
-			res_prov = re.sub(r"\.\s*(min|max|count|sum|avg)?\s*\d+(\.\d+)?([eE][-+]?\d+)?", "", newrow)
-		
-		if '* (' in res_prov:
-			expandedPolynomial, variableDict = poly.expansion(res_prov)
-			tokensPLUS = prov.splitByTokenPLUS(str(expandedPolynomial))
-		else:
-			expandedPolynomial, variableDict = poly.noExp(res_prov)
-			tokensPLUS = prov.splitByTokenPLUS(expandedPolynomial)
-		# tests if the 'regular' column values can be derived from the provenance polynomial.
-		index_contador = -1
-		if 'contador' in colnames:
-			total = poly.value(res_prov, 1)
-			index_contador = colnames.index('contador')
+            if len(symbExpressions) > 0:
+                for expression in symbExpressions:
+                    if poly.solveSymbolicExpression(expression):
+                        newProv.append(removeSymbols(part))
+                    else:
+                        newAgg.append(removeSymbols(part))
+            else:
+                return True, [], []
 
-		if index_contador > 0:
-			if res[row][index_contador] != total:
-				valid = False
-				print(f'  --> Error in line {row}!')
-				print(f'      {res[row][index_contador]}  >>> contador >>>  {total}')
-				break
-		
-		for token in tokensPLUS:
-			
-			if columns[0] != []:
-				sql = prov.composeSQLValidationStatement(prov.splitByTokenMULT(token), variableDict, columns, columnsexp)
-				print(sql)
-				provResultTokenPLUS, col_names = db.executeQuery(sql)
-				print(provResultTokenPLUS)
-				
-				fails = 0
-				for col in range(len(columns[0])):
-					index_col = colnames.index(columns[0][col])
-					if res[row][index_col] != provResultTokenPLUS[0][col]:
-						fails += 1
-				#fails = sum(1 for col in range(len(columns[0])) if res[row][col] != provResultTokenPLUS[0][col])
+        return True, newProv, newAgg
+    else:
+        # Regex pattern
+        pattern = r"\. \[(.*?)\]"
 
-				if fails > 0:
-					print(f'  --> Error in line {row}!')
-					print(f'      {res[row]}  >>> regular columns >>>  {provResultTokenPLUS}')
-					valid = False
-					break
+        # Find all matches
+        symbExpressions = re.findall(pattern, prov)
+
+        if len(symbExpressions) > 0:
+            for expression in symbExpressions:
+                return poly.solveSymbolicExpression(expression), [], []
+        else:
+            return True, [], []
+
+    return False, [], []
 
 
+def solveAggRowsNested(colAgg, newProvAgg):
+    colAgg = colAgg.replace("δ", "")
+    colAgg = removeSymbols(colAgg)
+    for expression in newProvAgg:
+        expression = expression.replace("δ", "").strip()
+        colAgg = colAgg.replace(expression, "0")
 
-		# Tests if aggregation columns can be derived from the provenance polynomial.
-		# The code below works only for queries with a single aggregation column.
-		if len(columns[1]) > 0:
-			pattern = r'\.(min|max|count|sum|avg)?\s*(-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?)'
-			matches = re.findall(pattern, res[row][-1])
-			
-			if 'count' in matches[0]:
-				filtered_list = [item for item in matches if '0' not in item]
-				indexColumn = colnames.index(columns[1][0])
-				countResult = res[row][indexColumn]
-				print(countResult, ' - ' ,len(filtered_list))
-				if countResult != len(filtered_list):
-					valid = False
-					print(f'  --> Error in line {row}!')
-					print(f'      {res[row][index_contador]}  >>> aggregation >>>  {len(filtered_list)}')
-					break
-			elif 'min' in matches[0] or 'max' in matches[0]:
-				indexColumn = colnames.index(columns[1][0])
-				minMaxResult = res[row][indexColumn]
-				print(minMaxResult, ' - ' ,matches[0][1])
-				if float(minMaxResult) != float(matches[0][1]):
-					valid = False
-					print(f'  --> Error in line {row}!')
-					print(f'      {minMaxResult}  >>> aggregation >>>  {matches[0][1]}')
-					break
-			elif 'avg' in matches[0]:
-				pattern = r'(\d+(\.\d+)?)/(\d+(\.\d+)?)'
-				matches2 = re.findall(pattern, res[row][-1])
-				total = 0
-				for match in matches2:
-					total += float(match[0]) / float(match[2])
-				index_contador = colnames.index(columns[1][0])
-				somaOriginal = res[row][index_contador]
-				_isclose = math.isclose(somaOriginal, total, rel_tol=1e-9)
-				print(somaOriginal, ' - ' ,total)
-				print(_isclose)
-				if _isclose != True:
-					valid = False
-					print(f'  --> Error in line {row}!')
-					print(f'      {res[row][index_contador]}  >>> aggregation >>>  {total}')
-					break
-			else:
-				pattern = r'(\d+(\.\d+)?)/(\d+(\.\d+)?)'
-				matches2 = re.findall(pattern, newrow)
-				
-				total = 0
-				conta2 = ''
-				if len(matches2) > 0:
-					for match in matches2:
-						total += float(match[0]) / float(match[2])
-				else:
-					for match in matches:
-						total += float(match[1])
+    #    with open("output.txt", "w") as f:
+    #        f.write(f"{colAgg}\n")
+    # TODO: improve it
+    return solveAggRows(colAgg)
 
-				
-				index_contador = colnames.index(columns[1][0])
-				somaOriginal = res[row][index_contador]
-				_isclose = math.isclose(somaOriginal, total, rel_tol=1e-9)
-				print(somaOriginal, ' - ' ,total)
-				print(_isclose)
-				if _isclose != True:
-					valid = False
-					print(f'  --> Error in line {row}!')
-					print(f'      {res[row][index_contador]}  >>> aggregation >>>  {total}')
-					break
-			
-	if valid:
-		print('provenance is Valid.')
-	break
+
+def solveAggRows(colAgg):
+    if "+min" in colAgg or "+max" in colAgg:
+        return min(poly.extract_numbers(colAgg))
+    else:
+        colAgg = (
+            colAgg.replace("⊗", "*")
+            .replace("+sum", "+")
+            .replace("+avg", "+")
+            .replace("+count", "+")
+            .replace(" . ", " * ")
+        )
+        exp = mt.replace_words_with_fixed_number(colAgg)
+
+        exp = exp.replace("(0 )", "0")
+        exp = poly.replace_parentheses_with_one(exp)
+
+        result = 0
+        for expression in exp.split("+"):
+            result += eval(expression)
+
+        return result
+
+
+def evaluate_nested_expression(expression):
+    while "(" in expression:  # While there are still parentheses
+        expression = re.sub(
+            r"\([^()]*\)",  # Find innermost parentheses
+            lambda x: str(
+                eval(x.group(0))
+            ),  # Evaluate them #lambda x: str(eval(x.group(0))),  # Evaluate them
+            expression,
+        )
+    return expression
+
+
+def split_expression(expression, chunk_size=10):
+    tokens = re.findall(r"\d+|\+|\-|\*|\/|\(|\)", expression)  # Tokenize expression
+    chunks = [
+        " ".join(tokens[i : i + chunk_size]) for i in range(0, len(tokens), chunk_size)
+    ]
+    return chunks
+
+
+def removeSymbolsKeepNumber(prov):
+    # Regular expression pattern
+    # pattern = r"⊗\s*([\d]+(?:\.\d+)?)"
+
+    # Find all matches
+    # matches = re.findall(pattern, prov)
+
+    # Print results
+    # number = matches[-1]
+
+    # newProv = removeSymbols(prov)
+    # return newProv + " ⊗ " + number
+    # Regular expression pattern
+    pattern = r"([\d]+(?:\.\d+)?(?:/\d+)*)\s*(?=<)"
+
+    # Find all matches
+    matches = re.findall(pattern, prov)
+    print(matches)
+
+
+def removeSymbols(prov):
+    # Regex pattern: Match '.' only when it's surrounded by non-digits (words, spaces, etc.)
+    pattern = r"\. \[(.*?)\]"
+
+    # Use re.sub to replace matches with an empty string
+    cleaned_text = re.sub(pattern, "", prov)
+
+    return cleaned_text.strip()  # Remove any leading/trailing spaces
+
+
+def resultEqual(query, res, resColNames):
+    # TODO: If the original has limit, and order by, it is possible to reduce res
+    result = db.executeQuery(query)
+    if result is not None:
+        resOriginal, resOriginalCols = result
+        resOriginal = pd.DataFrame(resOriginal, columns=resOriginalCols)
+        resProv = pd.DataFrame(res, columns=resColNames)
+
+        # Drop unwanted columns
+        filterCols = ["prov"]
+        if "cntprov" in resProv.columns:
+            filterCols.append("cntprov")
+        resProv_filter = resProv.drop(columns=filterCols, errors="ignore")
+
+        # resProv_filter = (
+        #    resProv_filter.groupby("c_count")["custdist"].sum().reset_index()
+        # )
+
+        # Ensure columns are in the same order
+        resProv_filter = resProv_filter[resOriginal.columns]
+
+        # Get numeric and non-numeric columns
+        numeric_cols = resOriginal.select_dtypes(include=[np.number]).columns
+        non_numeric_cols = resOriginal.select_dtypes(exclude=[np.number]).columns
+
+        # Convert numeric columns to float
+        resOriginal[numeric_cols] = resOriginal[numeric_cols].astype(float)
+        resProv_filter[numeric_cols] = resProv_filter[numeric_cols].astype(float)
+
+        if not numeric_cols.empty:
+            resOriginal = resOriginal.sort_values(by=list(numeric_cols)).reset_index(
+                drop=True
+            )
+            resProv_filter = resProv_filter.sort_values(
+                by=list(numeric_cols)
+            ).reset_index(drop=True)
+
+            # Compare numeric columns using np.allclose()
+            numeric_equal = np.allclose(
+                resOriginal[numeric_cols], resProv_filter[numeric_cols], equal_nan=True
+            )
+        else:
+            numeric_equal = True
+
+        print(resOriginal)
+        print(resProv_filter)
+
+        if not non_numeric_cols.empty:
+            resOriginal = resOriginal.sort_values(
+                by=list(non_numeric_cols)
+            ).reset_index(drop=True)
+            resProv_filter = resProv_filter.sort_values(
+                by=list(non_numeric_cols)
+            ).reset_index(drop=True)
+            # Compare non-numeric columns using .equals()
+            non_numeric_equal = resOriginal[non_numeric_cols].equals(
+                resProv_filter[non_numeric_cols]
+            )
+        else:
+            non_numeric_equal = True
+
+        return numeric_equal and non_numeric_equal
+
+    return False
+
+
+# Load JSON from a file
+with open("QueriesAgg.json", "r") as file:
+    data = json.load(file)  # Parse JSON into a Python dictionary
+
+
+for query_id, query_data in data.items():
+    print(f"Query {query_id}:")
+    result = db.executeQuery(query_data["provenancequery"])
+    if result is not None:
+        res, resColNames = result
+        newRes = []
+        indexProv = resColNames.index("prov")
+        indexes = []
+        for row in res:
+            isTrue, newProv, newProvAgg = validateRow(row[indexProv])
+
+            if isTrue:
+                row = list(row)
+                if len(newProv) > 0:
+                    row[indexProv] = " + ".join(newProv)
+                else:
+                    row[indexProv] = removeSymbols(row[indexProv])
+                if len(query_data["columnsagg"]) > 0:
+                    for col in query_data["columnsagg"]:
+                        indexes = [
+                            i for i, value in enumerate(resColNames) if value == col
+                        ]
+                        if len(indexes) > 1:
+                            resultDivison = solveAggRows(
+                                row[indexes[0]]
+                            ) / solveAggRows(row[indexes[1]])
+                            row[indexes[0]] = resultDivison
+                            row.pop(indexes[1])
+                        else:
+                            if (
+                                len(query_data["columnsagg"]) > 1
+                                and len(newProvAgg) > 0
+                            ):
+                                for index in indexes:
+                                    row[index] = solveAggRowsNested(
+                                        row[index], newProvAgg
+                                    )
+                            else:
+                                indexCol = indexes[0]
+                                row[indexCol] = solveAggRows(row[indexCol])
+                row = tuple(row)
+                newRes.append(row)
+
+        resColNamesTemp = resColNames.copy()
+        if len(indexes) > 1:
+            resColNamesTemp.pop(indexes[1])
+        if resultEqual(query_data["originalquery"], newRes, resColNamesTemp):
+            for row in newRes:
+                try:
+                    if prov.solve_provenance(
+                        query_data["tables"],
+                        query_data["columns"],
+                        row,
+                        resColNamesTemp,
+                        query_data["columnsagg"],
+                    ):
+                        print("Results are equal")
+                    else:
+                        print("Results are not equal")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+        else:
+            print("Results are not equal")
+
+    """
+	print("  Original Query:", query_data["originalquery"])
+	print("  Provenance Query:", query_data["provenancequery"])
+	print("  Columns:", query_data["columns"])
+	print("  Aggregated Columns:", query_data["columnsagg"])
+	print()
+	"""
