@@ -11,6 +11,7 @@ import net.sf.jsqlparser.expression.WhenClause;
 import net.sf.jsqlparser.expression.Alias.AliasColumn;
 import net.sf.jsqlparser.expression.AnalyticExpression;
 import net.sf.jsqlparser.expression.CaseExpression;
+import net.sf.jsqlparser.expression.CastExpression;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.expression.operators.relational.GreaterThan;
 import net.sf.jsqlparser.expression.operators.relational.MinorThan;
@@ -18,8 +19,8 @@ import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.create.table.ColDataType;
 import net.sf.jsqlparser.statement.select.AllColumns;
-import net.sf.jsqlparser.statement.select.FromItem;
 import net.sf.jsqlparser.statement.select.GroupByElement;
 import net.sf.jsqlparser.statement.select.Join;
 import net.sf.jsqlparser.statement.select.ParenthesedSelect;
@@ -508,11 +509,48 @@ public class Parser {
 		List<SelectItem<?>> selectItems = new ArrayList<>();
 		selectItems = pHelper.getUnionColumns(setOperationList.getSelects().get(0));
 
+		List<Integer> funcIndexes = new ArrayList<>();
 		for(Select select : setOperationList.getSelects()){
+
+			if(!originalResult){
+				if (select instanceof PlainSelect){
+					int i = 0;
+					for(SelectItem<?> selectItem : ((PlainSelect) select).getSelectItems()){
+						if(selectItem.getExpression() instanceof Function){
+							Function function = (Function) selectItem.getExpression();
+							if(function.getName().toLowerCase().equals("sum") || function.getName().toLowerCase().equals("avg") || function.getName().toLowerCase().equals("count") || function.getName().toLowerCase().equals("max") || function.getName().toLowerCase().equals("min")){
+								funcIndexes.add(i);
+							}
+						}
+						i++;
+					}
+				}
+			}
+
 			addAnnotations(select, false);
 		}
 
-		setOperationList = checkUnionCols(setOperationList);
+		if(!originalResult){
+			for(Select select : setOperationList.getSelects()){
+				List<SelectItem<?>> items = ((PlainSelect) select).getSelectItems();
+				for(int j : funcIndexes){
+					if(items.get(j).getExpression() instanceof Column && !items.get(j).getExpression().toString().contains("prov")){
+						Column castColumn = (Column) items.get(j).getExpression();
+
+						CastExpression cast = new CastExpression();
+						cast.setLeftExpression(items.get(j).getExpression());
+						ColDataType colDataType = new ColDataType();
+						colDataType.setDataType("VARCHAR");
+						cast.setColDataType(colDataType);
+						SelectItem<?> selectItem = new SelectItem<>(cast);
+						Alias castAlias = items.get(j).getAlias() != null ? items.get(j).getAlias() : new Alias(castColumn.getColumnName());
+						selectItem.setAlias(castAlias);
+						
+						items.set(j, selectItem);
+					}
+				}
+			}
+		}
 
 		
 		for(SetOperation op : setOperationList.getOperations()){
